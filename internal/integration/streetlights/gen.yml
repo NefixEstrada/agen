@@ -1,0 +1,6 @@
+target:
+  spec: ./spec.yaml
+  dir: .
+  package_name: streetlights
+parser:
+  infer_types: true
