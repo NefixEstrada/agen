@@ -23,10 +23,35 @@ channels:
             measuredAt:
               type: string
               format: date-time
-              x-agen-time-format: unix
-          required: [deviceId, measuredAt]
+              x-agen-time-format: "2006-01-02 15:04:05"
+            seenAt:
+              type: string
+              format: unix
+          required: [deviceId, measuredAt, seenAt]
+  users:
+    address: users
+    messages:
+      created:
+        payload:
+          type: object
+          x-agen-validate:
+            crossField: { separator: "-" }
+          properties:
+            email:
+              type: string
+              x-agen-validate:
+                corporate: true
+            handle:
+              type: string
+              x-agen-validate:
+                reservedHandles: [admin, root]
+          required: [email, handle]
 operations:
   receiveTelemetry:
     action: receive
     channel:
       $ref: '#/channels/telemetry'
+  userCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/users'

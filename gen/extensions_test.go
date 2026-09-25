@@ -53,10 +53,18 @@ func TestXExtensions(t *testing.T) {
 
 	// x-agen-name renames the message envelope.
 	require.Contains(t, out, "type DeviceReading struct")
-	// x-agen-time-format maps the date-time property to unix seconds.
-	require.Contains(t, out, `json.DecodeTimeFormat(d, "unix")`)
-	require.Contains(t, out, `json.EncodeTimeFormat(e, s.MeasuredAt, "unix")`)
+	// x-agen-time-format maps the date-time property to a custom Go layout.
+	require.Contains(t, out, `json.DecodeTimeFormat(d, "2006-01-02 15:04:05")`)
+	require.Contains(t, out, `json.EncodeTimeFormat(e, s.MeasuredAt, "2006-01-02 15:04:05")`)
 	require.Contains(t, out, "MeasuredAt time.Time")
+	// format: unix maps to time.Time via unix-seconds string decoding.
+	require.Contains(t, out, "json.DecodeStringUnixSeconds")
+	require.Contains(t, out, `json:"seenAt"`)
+	// x-agen-validate: property-level validators get the field value...
+	require.Contains(t, out, `validate.Ogen("corporate", s.Email, true)`)
+	require.Contains(t, out, `validate.Ogen("reservedHandles", s.Handle, []interface{}{"admin", "root"})`)
+	// ...object-level ones the whole struct.
+	require.Contains(t, out, `validate.ValidateWith("crossField", s, map[string]interface{}{"separator": "-"})`)
 }
 
 // parseWithAliasing mirrors the CLI: alias x-agen-* before decoding.
