@@ -185,7 +185,7 @@ func encode{{ $.Name }}Message(topic string, msg {{ $.SumType.Name }}, opts ...P
 {{ template "msg/decode_single" (op_msg $op (index $op.Messages 0) ) }}
 {{- end }}
 {{- end }}
-{{- if $op.IsSend }}
+{{- if and $op.IsSend $.PublisherEnabled }}
 {{- if $op.SumType }}
 {{ template "msg/encode_sum" $op }}
 {{- range $m := $op.Messages }}
