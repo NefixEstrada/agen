@@ -1,0 +1,6 @@
+/api/
+/bin/
+*.test
+*.out
+*.dump
+/_testdata/**/api/

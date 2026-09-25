@@ -1,0 +1,15 @@
+version: "2"
+linters:
+  enable:
+    - gofmt
+    - govet
+    - staticcheck
+    - unused
+    - misspell
+  exclusions:
+    rules:
+      # Vendored ogen code stays as close to upstream as possible.
+      - path: internal/(ir|lowering|naming|bitset|xmaps|xslices)/
+        linters: [all]
+      - path: runtime/(codec|validate|ogenregex|conv)/
+        linters: [all]

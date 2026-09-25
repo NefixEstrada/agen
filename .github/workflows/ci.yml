@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race ./...
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l . | grep -v '^_testdata/' || true)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'ed:"; echo "$unformatted"; exit 1
+          fi
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  generate:
+    name: Generated code up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Regenerate integration packages
+        run: go generate ./internal/integration/...
+      - name: Check for diffs
+        run: |
+          git diff --exit-code -- internal/integration/ || {
+            echo "generated code is stale; run: go generate ./internal/integration/..."
+            exit 1
+          }
