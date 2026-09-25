@@ -1,0 +1,9 @@
+target:
+  spec: ./spec.yaml
+  dir: .
+  package_name: orders
+parser:
+  infer_types: true
+generator:
+  features:
+    enable: [fakes, unimplemented, middleware]

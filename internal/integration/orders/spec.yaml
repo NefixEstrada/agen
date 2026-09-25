@@ -1,0 +1,45 @@
+asyncapi: 3.0.0
+info:
+  title: Orders API
+  version: 1.0.0
+servers:
+  production:
+    host: redis.example.io:6379
+    protocol: redis
+defaultContentType: application/json
+channels:
+  orderEvents:
+    address: orders.events.{tenantId}
+    parameters:
+      tenantId:
+        description: The tenant identifier.
+        enum: ["acme", "globex"]
+    messages:
+      orderCreated:
+        payload:
+          type: object
+          properties:
+            orderId:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+          required: [orderId]
+      orderCancelled:
+        payload:
+          type: object
+          properties:
+            orderId:
+              type: string
+            reason:
+              type: string
+          required: [orderId]
+operations:
+  receiveOrderEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/orderEvents'
+  sendOrderEvents:
+    action: send
+    channel:
+      $ref: '#/channels/orderEvents'
