@@ -1,0 +1,1 @@
+address parameter "thingId" is not declared

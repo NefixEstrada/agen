@@ -1,0 +1,16 @@
+asyncapi: 3.0.0
+info:
+  title: Location test
+  version: 1.0.0
+channels:
+  telemetry:
+    address: 'devices.{deviceId}.telemetry'
+    messages:
+      reading:
+        payload:
+          type: string
+operations:
+  consume:
+    action: receive
+    channel:
+      $ref: '#/channels/telemetry'

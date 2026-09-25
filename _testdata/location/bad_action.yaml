@@ -1,0 +1,16 @@
+asyncapi: 3.0.0
+info:
+  title: Location test
+  version: 1.0.0
+channels:
+  measurements:
+    address: measurements
+    messages:
+      reading:
+        payload:
+          type: string
+operations:
+  consume:
+    action: observe
+    channel:
+      $ref: '#/channels/measurements'

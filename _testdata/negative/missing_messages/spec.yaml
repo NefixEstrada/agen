@@ -1,0 +1,9 @@
+asyncapi: 3.0.0
+info: { title: T, version: 1.0.0 }
+channels:
+  c:
+    address: c
+operations:
+  op:
+    action: send
+    channel: { $ref: '#/channels/c' }

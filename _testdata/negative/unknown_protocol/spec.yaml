@@ -1,0 +1,15 @@
+asyncapi: 3.0.0
+info: { title: T, version: 1.0.0 }
+servers:
+  s:
+    host: example.com
+    protocol: smoke-signals
+channels:
+  c:
+    address: c
+    messages:
+      m: { payload: { type: string } }
+operations:
+  op:
+    action: send
+    channel: { $ref: '#/channels/c' }
