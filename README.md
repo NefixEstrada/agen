@@ -82,20 +82,34 @@ Relative paths in the config resolve against the config file directory.
 
 ### Generated API (streetlights example)
 
-```go
-sub := streetlights.NewSubscriber(streetlights.NewSubscriberHandlers(myHandler), middleware...)
-consumer, err := redisruntime.NewConsumer(redisruntime.ConsumerConfig{
-	Addr:  "redis.example.io:6379",
-	Addresses: []string{"streetlights.*"}, // or concrete stream addresses
-	Group: "streetlights-app",             // consumer group (streams mode)
-})
-err = consumer.Run(ctx, sub) // → decode → validate → typed handler; XACK on success
+ogen-style: the generated package wires the broker runtime internally — user
+code never imports `agen/runtime` (specs whose servers use a protocol without
+a runtime backend yet, e.g. kafka, fall back to `WithPublisher`).
 
-pub, _ := redisruntime.NewPublisher(redisruntime.PublisherConfig{Addr: "redis.example.io:6379"})
-client := streetlights.NewClient(pub)
+```go
+// Server: consumes the spec's `receive` operations.
+srv, err := streetlights.NewServer(myHandler,
+	streetlights.WithAddr("redis.example.io:6379"), // default: first spec server
+	streetlights.WithGroup("streetlights-app"),     // consumer group (streams mode)
+	streetlights.WithMode(streetlights.ModeStreams),
+)
+go func() { _ = srv.Run(ctx) }() // → decode → validate → typed handler; XACK on success
+<-srv.Ready()
+
+// Client: publishes the spec's `send` operations.
+client, err := streetlights.NewClient("redis.example.io:6379",
+	streetlights.WithMode(streetlights.ModeStreams),
+)
 err = client.SendLightCommand(ctx, &streetlights.LightCommand{…})
 // parameterized channels: client.SendOrderEvents(ctx, "acme", msg)
+
+// Protocols without a runtime backend: bring your own publisher.
+client, err := streetlights.NewClient("", streetlights.WithPublisher(myPublisher))
 ```
+
+Low-level building blocks stay exported for custom wiring (sharing a
+connection, backends without codegen support): `NewSubscriber`,
+`NewSubscriberHandlers`, `NewHandler` and the `runtime/*` packages.
 
 Multi-message channels generate a dispatch interface (`OrderEventsMessage`) with try-decode-in-order dispatch:
 messages are tried in sorted spec order, so payloads matching several shapes dispatch to the first variant. Use

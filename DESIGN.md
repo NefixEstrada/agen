@@ -121,32 +121,52 @@ type ReceiveLightMeasurementHandler interface {
     ReceiveLightMeasurement(ctx context.Context, msg *LightMeasured) error
 }
 
-// aas_client_gen.go — producer side (action: send)
+// aas_client_gen.go — producer side (action: send), ogen-style constructor
 type Client struct { /* … */ }
+func NewClient(addr string, opts ...ClientOption) (*Client, error) // wires the runtime publisher
 func (c *Client) SendLightCommand(ctx context.Context, msg *LightCommand, opts ...PublishOption) error
+
+// aas_server_gen.go — consumer side (action: receive), ogen-style constructor
+type Server struct { /* … */ }
+func NewServer(h Handler, opts ...ServerOption) (*Server, error) // wires the runtime consumer
+func (s *Server) Run(ctx context.Context) error // XREADGROUP → dispatch → typed handler; XACK on success
 
 // aas_subscriber_gen.go — wiring: raw incoming → decode → validate → dispatch (with middlewares)
 type Subscriber struct { /* … */ }
 func (s *Subscriber) Dispatch(ctx context.Context, raw runtime.Incoming) error
 
-// aas_cfg_gen.go — servers, addresses (with channel-parameter templating), content types
+// aas_servers_gen.go — per-spec-server address constants (serverConst)
+// aas_operations_gen.go — OperationName constants, one per operation
+// aas_cfg_gen.go — addresses (with channel-parameter templating), content types,
+//                  option machinery (ServerOption/ClientOption, ogen-style)
 // aas_middleware_gen.go, aas_fakes_gen.go, aas_unimplemented_gen.go — ogen-equivalents
 ```
 
-User code (the part agen never touches):
+User code (the part agen never touches), ogen-style — the generated package
+wires the broker runtime internally, so user code imports only the generated
+package (the runtime is imported by generated code, exactly like ogen):
 
 ```go
-sub := streetlights.NewSubscriber(streetlights.NewSubscriberHandlers(myHandler), middleware...)
-consumer, err := redisruntime.NewConsumer(redisruntime.ConsumerConfig{
-    Addr:  "redis.example.io:6379",
-    Group: "streetlights-app", // consumer group for XREADGROUP (§6.5)
-})
-err = consumer.Run(ctx, sub) // XREADGROUP → sub.Dispatch → typed handler; XACK on success
+srv, err := streetlights.NewServer(myHandler,
+    streetlights.WithAddr("redis.example.io:6379"), // default: first spec server
+    streetlights.WithGroup("streetlights-app"),     // consumer group for XREADGROUP (§6.5)
+    streetlights.WithMode(streetlights.ModeStreams),
+)
+go func() { _ = srv.Run(ctx) }()
+<-srv.Ready()
 
-pub, err := redisruntime.NewPublisher(redisruntime.PublisherConfig{Addr: …})
-client := streetlights.NewClient(pub)
+client, err := streetlights.NewClient("redis.example.io:6379",
+    streetlights.WithMode(streetlights.ModeStreams),
+)
 err = client.SendLightCommand(ctx, &streetlights.LightCommand{…})
 ```
+
+Unlike ogen's HTTP `Server` (an `http.Handler` driven by `net/http`), a broker
+server has no stdlib driver, so the generated `Server` exposes `Run(ctx)`
+instead of `ServeHTTP`. Specs whose servers use a protocol without a runtime
+backend yet (e.g. kafka) generate no server wiring, and their client requires
+`WithPublisher` (bring your own runtime publisher); the low-level
+`NewSubscriber`/`NewHandler` building blocks stay exported for custom wiring.
 
 Key semantic rules baked into codegen:
 
