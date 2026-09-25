@@ -70,16 +70,16 @@ jobs:
           go-version: stable
       - name: Regenerate examples
         working-directory: examples
-        run: |
-          go mod download github.com/NefixEstrada/agen
-          go generate ./...
+        run: go generate
       - name: Check for diffs
         working-directory: examples
         run: |
           git diff --exit-code -- . || {
-            echo "example code is stale; run: (cd examples && go generate ./...)"
+            echo "example code is stale; run: make examples"
             exit 1
           }
-      - name: Test
+      - name: Build and test
         working-directory: examples
-        run: go test ./...
+        run: |
+          go build ./...
+          go test ./...

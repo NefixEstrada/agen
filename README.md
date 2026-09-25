@@ -106,7 +106,7 @@ unique required fields or a schema-level `oneOf`/`discriminator` payload for una
 ```sh
 go test ./...                       # unit + integration (miniredis, no docker needed)
 go generate ./internal/integration/...  # regenerate committed packages after template changes
-(cd examples && go generate ./... && go test ./...)  # real public documents (drift check)
+make examples test_examples                    # regenerate + test (real public documents)
 ```
 
 `examples/` is a separate module with committed generated code for real public AsyncAPI documents (the
