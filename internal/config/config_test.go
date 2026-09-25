@@ -52,21 +52,23 @@ target:
 	require.Contains(t, err.Error(), "pakage_name")
 }
 
-func TestSpecRequired(t *testing.T) {
+func TestFeatureOnlyConfig(t *testing.T) {
+	// ogen-style configs carry only generator options; the spec comes from
+	// the CLI arguments.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "agen.yml")
-	require.NoError(t, os.WriteFile(path, []byte("target:\n  dir: ./api\n"), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte("generator:\n  features:\n    enable: [fakes]\n"), 0o600))
 
-	_, err := agenconfig.Load(path)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "target.spec is required")
+	cfg, err := agenconfig.Load(path)
+	require.NoError(t, err)
+	require.Equal(t, []string{"fakes"}, cfg.Generator.Features.Enable)
 }
 
-func TestPackageNameFromTitle(t *testing.T) {
+func TestPackageNameDefault(t *testing.T) {
 	cfg := &agenconfig.Config{}
-	require.Equal(t, "streetlightsapi", cfg.PackageName("Streetlights API"))
-	require.Equal(t, "orders", cfg.PackageName("Orders"))
-	require.Equal(t, "api", cfg.PackageName(""))
+	// The default package name is "api" (ogen behavior); configs or the
+	// --package-name flag override it.
+	require.Equal(t, "", cfg.Target.PackageName)
 }
 
 func TestAutoDiscover(t *testing.T) {

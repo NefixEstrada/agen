@@ -46,6 +46,9 @@ func run() error {
 	}
 
 	cfgPath := set.String("config", "", "Path to config file (auto-discovered: agen.yml, .agen.yml, ...)")
+	target := set.String("target", "", "Target directory for generated code")
+	pkgName := set.String("package-name", "", "Package name of the generated code (default: api)")
+	clean := set.Bool("clean", false, "Remove the target directory before generating")
 	verbose := set.Bool("v", false, "Enable verbose mode")
 	_ = set.Parse(os.Args[1:])
 
@@ -90,6 +93,23 @@ func run() error {
 	default:
 		set.Usage()
 		return errors.New("too many arguments")
+	}
+
+	if cfg.Target.Spec == "" {
+		return errors.New("no spec provided: pass it as an argument or set target.spec in the config")
+	}
+
+	// Flags override the config file and positional arguments.
+	if *target != "" {
+		cfg.Target.Dir = *target
+	}
+	if *pkgName != "" {
+		cfg.Target.PackageName = *pkgName
+	}
+	if *clean && cfg.Target.Dir != "" {
+		if err := os.RemoveAll(cfg.Target.Dir); err != nil {
+			return errors.Wrap(err, "clean target dir")
+		}
 	}
 
 	if err := Generate(cfg, log); err != nil {
@@ -176,7 +196,10 @@ func Generate(cfg *agenconfig.Config, log *zap.Logger) error {
 		return err
 	}
 
-	pkgName := cfg.PackageName(api.Info.Title)
+	pkgName := cfg.Target.PackageName
+	if pkgName == "" {
+		pkgName = "api"
+	}
 	if err := os.MkdirAll(cfg.Target.Dir, 0o750); err != nil {
 		return errors.Wrap(err, "create target dir")
 	}

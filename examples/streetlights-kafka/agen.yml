@@ -1,9 +1,0 @@
-target:
-  spec: ./asyncapi.yaml
-  dir: ./api
-  package_name: streetlightskafka
-parser:
-  infer_types: true
-generator:
-  features:
-    enable: [unimplemented]

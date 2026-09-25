@@ -1,6 +1,0 @@
-target:
-  spec: ./asyncapi.yaml
-  dir: ./api
-  package_name: convertedstreetlights
-parser:
-  infer_types: true

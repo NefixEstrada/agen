@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/yaml"
@@ -160,9 +159,6 @@ func (c *Config) setDefaults() error {
 	if c.Target.Dir == "" {
 		c.Target.Dir = "./api"
 	}
-	if c.Target.Spec == "" {
-		return errors.New("target.spec is required: point it at your AsyncAPI 3.x document")
-	}
 	switch c.Broker.RedisMode() {
 	case "", "streams", "pubsub":
 	default:
@@ -182,47 +178,4 @@ func (b Broker) RedisMode() string {
 		return "streams"
 	}
 	return b.Redis.Mode
-}
-
-// PackageName derives the package name from the spec title if unset.
-func (c *Config) PackageName(title string) string {
-	if c.Target.PackageName != "" {
-		return c.Target.PackageName
-	}
-	if title == "" {
-		return "api"
-	}
-	// Lowercase, strip non-identifier characters, snake words.
-	var b strings.Builder
-	upperNext := false
-	for _, r := range title {
-		switch {
-		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
-			if upperNext && b.Len() > 0 {
-				b.WriteRune(r - 32)
-			} else {
-				b.WriteRune(r)
-			}
-			upperNext = false
-		case r >= 'A' && r <= 'Z':
-			if upperNext && b.Len() > 0 {
-				b.WriteRune(' ')
-				b.WriteRune(r + 32)
-			} else {
-				b.WriteRune(r + 32)
-			}
-			upperNext = false
-		default:
-			upperNext = true
-		}
-	}
-	name := strings.ReplaceAll(b.String(), " ", "")
-	if name == "" {
-		return "api"
-	}
-	// Go identifiers can't start with a digit.
-	if name[0] >= '0' && name[0] <= '9' {
-		name = "api" + name
-	}
-	return name
 }
