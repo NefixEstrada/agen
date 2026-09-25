@@ -8,7 +8,7 @@ Source files: `gen/schema_gen.go`, `gen/schema_gen_primitive.go`, `gen/schema_ge
 
 Copied + adapted (package `gen` → `lowering`). Local deltas:
 - HTTP response/parameter/wtype storage removed from `tstorage.go`/`genctx.go`.
-- `gen_equality*.go` and `gen_validators_unique.go` (x-ogen-gen-equal feature) not vendored yet.
+- `gen_equality*.go` and `gen_validators_unique.go` are vendored at the `gen` package level (`gen/gen_equality*.go`, `gen/gen_validators_unique.go`), driving the `ir.EqualityMethodSpec` types vendored here.
 - `PascalSpecial`/`CamelSpecial` exported for the gen package.
 - `Engine` API added (`engine.go`) driving `schemaGen` with one shared type storage.
 - `DefaultImports` exported; import paths point at `agen/runtime/*` instead of `ogen/*`.
