@@ -9,43 +9,39 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
-	redisruntime "github.com/NefixEstrada/agen/runtime/redis"
-
 	demo "github.com/NefixEstrada/agen/examples/ex_redis/api"
 )
 
 // TestRedisDemoEndToEnd runs the demo flow (publish -> consume -> ack) against
-// an in-memory Redis.
+// an in-memory Redis, wiring everything through the generated ogen-style
+// constructors.
 func TestRedisDemoEndToEnd(t *testing.T) {
 	mr := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
+	// Admin client, only to assert the XACK state of the stream.
+	admin := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = admin.Close() })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	got := make(chan *demo.LightCommand, 1)
-	sub := demo.NewSubscriber(demo.NewSubscriberHandlers(
-		handlerFunc(func(ctx context.Context, msg *demo.LightCommand) error {
-			got <- msg
-			return nil
-		}),
-	))
-
-	consumer, err := redisruntime.NewConsumer(redisruntime.ConsumerConfig{
-		Client:    client,
-		Addresses: []string{demo.LightCommandAddress},
-		Group:     "demo-app",
-		Block:     100 * time.Millisecond,
-	})
+	srv, err := demo.NewServer(demoHandler{got: got},
+		demo.WithAddr(mr.Addr()),
+		demo.WithGroup("demo-app"),
+	)
 	require.NoError(t, err)
 
 	done := make(chan error, 1)
-	go func() { done <- consumer.Run(ctx, sub) }()
+	go func() { done <- srv.Run(ctx) }()
 
-	publisher, err := redisruntime.NewPublisher(redisruntime.PublisherConfig{Client: client})
+	select {
+	case <-srv.Ready():
+	case <-time.After(3 * time.Second):
+		t.Fatal("server did not become ready")
+	}
+
+	c, err := demo.NewClient(mr.Addr())
 	require.NoError(t, err)
-	c := demo.NewClient(publisher)
 	require.NoError(t, c.SendLightCommand(ctx, &demo.LightCommand{
 		Payload: demo.LightCommandPayload{
 			Command: demo.LightCommandPayloadCommandOn,
@@ -63,11 +59,12 @@ func TestRedisDemoEndToEnd(t *testing.T) {
 
 	// Successful dispatch XACKs the stream entry.
 	require.Eventually(t, func() bool {
-		pending, err := client.XPending(ctx, demo.LightCommandAddress, "demo-app").Result()
+		pending, err := admin.XPending(ctx, demo.LightCommandAddress, "demo-app").Result()
 		return err == nil && pending.Count == 0
 	}, 3*time.Second, 50*time.Millisecond)
 
 	cancel()
 	<-done
-	require.NoError(t, publisher.Close(ctx))
+	require.NoError(t, c.Close(context.Background()))
+	require.NoError(t, srv.Close(context.Background()))
 }

@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/NefixEstrada/agen/runtime/broker"
 )
@@ -38,16 +39,24 @@ func WithHeader(k, v string) PublishOption {
 }
 
 // Client publishes messages of the application's `send` operations to a
-// broker via a runtime Publisher.
+// broker.
 type Client struct {
 	publisher broker.Publisher
 }
 
-// NewClient creates a Client publishing with the given Publisher.
-func NewClient(publisher broker.Publisher) *Client {
+// NewClient creates new Client defined by AAS, wiring the runtime publisher
+// of the spec protocol.
+//
+// Pass WithPublisher to reuse an existing runtime Publisher instead.
+func NewClient(addr string, opts ...ClientOption) (*Client, error) {
+	cfg := newClientConfig(opts...)
+	publisher := cfg.Publisher
+	if publisher == nil {
+		return nil, fmt.Errorf("agen: spec protocol %q has no runtime backend: construct a runtime publisher and pass it with WithPublisher", "kafka-secure")
+	}
 	return &Client{
 		publisher: publisher,
-	}
+	}, nil
 }
 
 // Close closes the underlying publisher.

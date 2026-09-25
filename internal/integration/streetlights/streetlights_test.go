@@ -93,9 +93,10 @@ func TestReceiveValidationFails(t *testing.T) {
 
 func TestPublish(t *testing.T) {
 	pub := &fakePublisher{}
-	client := streetlights.NewClient(pub)
+	client, err := streetlights.NewClient("", streetlights.WithPublisher(pub))
+	require.NoError(t, err)
 
-	err := client.SendLightCommand(context.Background(), &streetlights.LightCommand{
+	err = client.SendLightCommand(context.Background(), &streetlights.LightCommand{
 		Payload: streetlights.LightCommandPayload{
 			Command: streetlights.NewOptLightCommandPayloadCommand(streetlights.LightCommandPayloadCommandOn),
 		},

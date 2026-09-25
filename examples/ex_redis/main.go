@@ -1,11 +1,12 @@
-// Command redis-demo is a runnable example of agen's Redis runtime: it
-// generates the typed package from asyncapi.yaml (see agen.yml), then
-// publishes light commands to Redis and receives them back through a typed
-// subscriber.
+// Command redis-demo is a runnable example of agen's ogen-style generated
+// API: the typed package is generated from asyncapi.yaml (see
+// examples/generate.go), then the generated NewServer/NewClient wire the
+// Redis runtime internally — user code never imports agen/runtime, exactly
+// like ogen's generated HTTP server/client.
 //
 // Start a Redis server (e.g. docker run -p 6379:6379 redis) and run:
 //
-//	go run ./examples/redis
+//	go run ./examples/ex_redis
 //
 // In streams mode (default) messages go through a consumer group (XADD →
 // XREADGROUP → XACK). With -mode pubsub they use Redis Pub/Sub instead
@@ -21,8 +22,6 @@ import (
 	"syscall"
 	"time"
 
-	redisruntime "github.com/NefixEstrada/agen/runtime/redis"
-
 	demo "github.com/NefixEstrada/agen/examples/ex_redis/api"
 )
 
@@ -34,54 +33,44 @@ func main() {
 	)
 	flag.Parse()
 
-	if err := run(*addr, *mode, *n); err != nil {
+	if err := run(*addr, demo.Mode(*mode), *n); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "error: %+v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(addr, mode string, n int) error {
+func run(addr string, mode demo.Mode, n int) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Server: the generated constructor wires the Redis consumer for the
+	// spec's receive operations.
 	got := make(chan *demo.LightCommand, n)
-	sub := demo.NewSubscriber(demo.NewSubscriberHandlers(
-		handlerFunc(func(ctx context.Context, msg *demo.LightCommand) error {
-			fmt.Printf("received command=%s sentAt=%s\n", msg.Payload.Command, msg.Payload.SentAt.Format(time.RFC3339))
-			got <- msg
-			return nil
-		}),
-	))
-
-	consumer, err := redisruntime.NewConsumer(redisruntime.ConsumerConfig{
-		Addr:      addr,
-		Mode:      redisruntime.Mode(mode),
-		Addresses: []string{demo.LightCommandAddress},
-		Group:     "demo-app",
-	})
+	srv, err := demo.NewServer(demoHandler{got: got},
+		demo.WithAddr(addr),
+		demo.WithGroup("demo-app"),
+		demo.WithMode(mode),
+	)
 	if err != nil {
 		return err
 	}
 
-	consumerDone := make(chan error, 1)
-	go func() { consumerDone <- consumer.Run(ctx, sub) }()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- srv.Run(ctx) }()
 
 	// Wait for the subscription/group to be established: publishing earlier
 	// can lose messages in pubsub mode.
 	select {
-	case <-consumer.Ready():
+	case <-srv.Ready():
 	case <-time.After(5 * time.Second):
-		return fmt.Errorf("consumer did not become ready")
+		return fmt.Errorf("server did not become ready")
 	}
 
-	publisher, err := redisruntime.NewPublisher(redisruntime.PublisherConfig{
-		Addr: addr,
-		Mode: redisruntime.Mode(mode),
-	})
+	// Client: the generated constructor wires the Redis publisher.
+	client, err := demo.NewClient(addr, demo.WithMode(mode))
 	if err != nil {
 		return err
 	}
-	client := demo.NewClient(publisher)
 
 	fmt.Printf("publishing %d light commands to %s (mode=%s)\n", n, demo.LightCommandAddress, mode)
 	for i := 0; i < n; i++ {
@@ -104,18 +93,27 @@ func run(addr, mode string, n int) error {
 		case <-got:
 		case <-time.After(10 * time.Second):
 			return fmt.Errorf("timed out waiting for message %d", i+1)
-		case err := <-consumerDone:
-			return fmt.Errorf("consumer stopped: %w", err)
+		case err := <-serverDone:
+			return fmt.Errorf("server stopped: %w", err)
 		}
 	}
 
 	stop()
-	<-consumerDone
-	return publisher.Close(ctx)
+	<-serverDone
+	if err := client.Close(context.Background()); err != nil {
+		return err
+	}
+	return srv.Close(context.Background())
 }
 
-type handlerFunc func(ctx context.Context, msg *demo.LightCommand) error
+// demoHandler implements the generated Handler interface.
+type demoHandler struct {
+	got chan *demo.LightCommand
+}
 
-func (f handlerFunc) ReceiveLightCommand(ctx context.Context, msg *demo.LightCommand) error {
-	return f(ctx, msg)
+// ReceiveLightCommand implements the receiveLightCommand operation.
+func (h demoHandler) ReceiveLightCommand(_ context.Context, msg *demo.LightCommand) error {
+	fmt.Printf("received command=%s sentAt=%s\n", msg.Payload.Command, msg.Payload.SentAt.Format(time.RFC3339))
+	h.got <- msg
+	return nil
 }

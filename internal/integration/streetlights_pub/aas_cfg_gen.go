@@ -4,6 +4,9 @@ package streetlightspub
 
 import (
 	"fmt"
+
+	"github.com/NefixEstrada/agen/runtime/broker"
+	redisruntime "github.com/NefixEstrada/agen/runtime/redis"
 )
 
 // BuildLightMeasuredAddress builds the "lightMeasured" channel address from
@@ -21,19 +24,66 @@ func BuildLightMeasuredAddress(streetlightId string) (string, error) {
 // LightCommandAddress is the static address of the "lightCommand" channel.
 const LightCommandAddress = "streetlights.command"
 
-// ServerInfo describes a spec server entry.
-type ServerInfo struct {
-	Name            string
-	Host            string
-	Protocol        string
-	ProtocolVersion string
+type (
+	optionFunc[C any] func(*C)
+)
+
+// Mode selects the broker mapping used by the generated client and server
+// (redis: streams or pubsub, see runtime/redis).
+type Mode = redisruntime.Mode
+
+// Supported broker mapping modes.
+const (
+	// ModeStreams is the durable at-least-once mapping (default).
+	ModeStreams = redisruntime.ModeStreams
+	// ModePubSub is the fire-and-forget mapping.
+	ModePubSub = redisruntime.ModePubSub
+)
+
+// modeOption sets the broker mapping mode on every config that has one.
+type modeOption struct{ mode Mode }
+
+func (o modeOption) applyClient(c *clientConfig) { c.Mode = o.mode }
+
+type clientConfig struct {
+	Publisher broker.Publisher
+	Mode      Mode
 }
 
-// Spec servers, from the AsyncAPI document.
-var Servers = []ServerInfo{
-	{
-		Name:     "production",
-		Host:     "redis.example.io:6379",
-		Protocol: "redis",
-	},
+// ClientOption is client config option.
+type ClientOption interface {
+	applyClient(*clientConfig)
+}
+
+var _ ClientOption = (optionFunc[clientConfig])(nil)
+
+func (o optionFunc[C]) applyClient(c *C) {
+	o(c)
+}
+
+func newClientConfig(opts ...ClientOption) clientConfig {
+	cfg := clientConfig{}
+	for _, opt := range opts {
+		opt.applyClient(&cfg)
+	}
+	return cfg
+}
+
+// WithPublisher specifies the runtime Publisher to use.
+//
+// It is the low-level escape hatch for protocols without a runtime backend
+// and for sharing a connection in tests. If none is specified, the client
+// wires the backend of the spec protocol itself.
+func WithPublisher(publisher broker.Publisher) ClientOption {
+	return optionFunc[clientConfig](func(cfg *clientConfig) {
+		if publisher != nil {
+			cfg.Publisher = publisher
+		}
+	})
+}
+
+// WithMode sets the broker mapping mode (streams by default; pubsub for
+// fire-and-forget).
+func WithMode(mode Mode) ClientOption {
+	return modeOption{mode: mode}
 }

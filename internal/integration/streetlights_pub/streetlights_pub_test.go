@@ -19,9 +19,10 @@ import (
 
 func TestPublish(t *testing.T) {
 	pub := &fakePublisher{}
-	client := streetlightspub.NewClient(pub)
+	client, err := streetlightspub.NewClient("", streetlightspub.WithPublisher(pub))
+	require.NoError(t, err)
 
-	err := client.SendLightCommand(context.Background(), &streetlightspub.LightCommand{
+	err = client.SendLightCommand(context.Background(), &streetlightspub.LightCommand{
 		Payload: streetlightspub.LightCommandPayload{
 			Command: streetlightspub.NewOptLightCommandPayloadCommand(streetlightspub.LightCommandPayloadCommandOn),
 		},
@@ -42,9 +43,10 @@ func TestPublish(t *testing.T) {
 
 func TestPublishOptions(t *testing.T) {
 	pub := &fakePublisher{}
-	client := streetlightspub.NewClient(pub)
+	client, err := streetlightspub.NewClient("", streetlightspub.WithPublisher(pub))
+	require.NoError(t, err)
 
-	err := client.SendLightCommand(context.Background(), &streetlightspub.LightCommand{
+	err = client.SendLightCommand(context.Background(), &streetlightspub.LightCommand{
 		Payload: streetlightspub.LightCommandPayload{
 			Command: streetlightspub.NewOptLightCommandPayloadCommand(streetlightspub.LightCommandPayloadCommandOff),
 		},

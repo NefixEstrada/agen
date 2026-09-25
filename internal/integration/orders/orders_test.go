@@ -128,7 +128,8 @@ func TestParameterizedPublish(t *testing.T) {
 
 	pub, err := redisruntime.NewPublisher(redisruntime.PublisherConfig{Client: client})
 	require.NoError(t, err)
-	c := orders.NewClient(pub)
+	c, err := orders.NewClient("", orders.WithPublisher(pub))
+	require.NoError(t, err)
 
 	require.NoError(t, c.SendOrderEvents(context.Background(), "acme", &orders.OrderCreated{
 		Payload: orders.OrderCreatedPayload{
@@ -148,13 +149,14 @@ func TestParameterizedPublish(t *testing.T) {
 
 func TestFakesAndUnimplemented(t *testing.T) {
 	fake := &orders.FakePublisher{}
-	c := orders.NewClient(fake)
+	c, err := orders.NewClient("", orders.WithPublisher(fake))
+	require.NoError(t, err)
 	require.NoError(t, c.SendOrderEvents(context.Background(), "acme", &orders.OrderCreated{}))
 	require.Len(t, fake.Messages, 1)
 	require.Equal(t, "orders.events.acme", fake.Messages[0].Topic)
 
 	fakeHandler := &orders.FakeReceiveOrderEventsHandler{}
-	err := fakeHandler.ReceiveOrderEvents(context.Background(), &orders.OrderCreated{})
+	err = fakeHandler.ReceiveOrderEvents(context.Background(), &orders.OrderCreated{})
 	require.NoError(t, err)
 	require.Len(t, fakeHandler.Messages, 1)
 

@@ -4,6 +4,8 @@ package api
 
 import (
 	"fmt"
+
+	"github.com/NefixEstrada/agen/runtime/broker"
 )
 
 // BuildLightsDimAddress builds the "lightsDim" channel address from
@@ -34,24 +36,41 @@ func BuildLightTurnOnAddress(streetlightId string) (string, error) {
 	return fmt.Sprintf("smartylighting.streetlights.1.0.action.%s.turn.on", streetlightId), nil
 }
 
-// ServerInfo describes a spec server entry.
-type ServerInfo struct {
-	Name            string
-	Host            string
-	Protocol        string
-	ProtocolVersion string
+type (
+	optionFunc[C any] func(*C)
+)
+type clientConfig struct {
+	Publisher broker.Publisher
 }
 
-// Spec servers, from the AsyncAPI document.
-var Servers = []ServerInfo{
-	{
-		Name:     "mtls-connections",
-		Host:     "test.mykafkacluster.org:28092",
-		Protocol: "kafka-secure",
-	},
-	{
-		Name:     "scram-connections",
-		Host:     "test.mykafkacluster.org:18092",
-		Protocol: "kafka-secure",
-	},
+// ClientOption is client config option.
+type ClientOption interface {
+	applyClient(*clientConfig)
+}
+
+var _ ClientOption = (optionFunc[clientConfig])(nil)
+
+func (o optionFunc[C]) applyClient(c *C) {
+	o(c)
+}
+
+func newClientConfig(opts ...ClientOption) clientConfig {
+	cfg := clientConfig{}
+	for _, opt := range opts {
+		opt.applyClient(&cfg)
+	}
+	return cfg
+}
+
+// WithPublisher specifies the runtime Publisher to use.
+//
+// It is the low-level escape hatch for protocols without a runtime backend
+// and for sharing a connection in tests. If none is specified, the client
+// wires the backend of the spec protocol itself.
+func WithPublisher(publisher broker.Publisher) ClientOption {
+	return optionFunc[clientConfig](func(cfg *clientConfig) {
+		if publisher != nil {
+			cfg.Publisher = publisher
+		}
+	})
 }

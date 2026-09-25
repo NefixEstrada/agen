@@ -2,8 +2,51 @@
 
 package api
 
+import (
+	"github.com/NefixEstrada/agen/runtime/broker"
+)
+
 // LightingMeasuredAddress is the static address of the "lightingMeasured" channel.
 const LightingMeasuredAddress = "lightingMeasured"
 
 // TurnOnAddress is the static address of the "turnOn" channel.
 const TurnOnAddress = "turnOn"
+
+type (
+	optionFunc[C any] func(*C)
+)
+type clientConfig struct {
+	Publisher broker.Publisher
+}
+
+// ClientOption is client config option.
+type ClientOption interface {
+	applyClient(*clientConfig)
+}
+
+var _ ClientOption = (optionFunc[clientConfig])(nil)
+
+func (o optionFunc[C]) applyClient(c *C) {
+	o(c)
+}
+
+func newClientConfig(opts ...ClientOption) clientConfig {
+	cfg := clientConfig{}
+	for _, opt := range opts {
+		opt.applyClient(&cfg)
+	}
+	return cfg
+}
+
+// WithPublisher specifies the runtime Publisher to use.
+//
+// It is the low-level escape hatch for protocols without a runtime backend
+// and for sharing a connection in tests. If none is specified, the client
+// wires the backend of the spec protocol itself.
+func WithPublisher(publisher broker.Publisher) ClientOption {
+	return optionFunc[clientConfig](func(cfg *clientConfig) {
+		if publisher != nil {
+			cfg.Publisher = publisher
+		}
+	})
+}

@@ -122,7 +122,8 @@ func TestSendOperationEndToEnd(t *testing.T) {
 
 	pub, err := redisruntime.NewPublisher(redisruntime.PublisherConfig{Client: client})
 	require.NoError(t, err)
-	c := streetlights.NewClient(pub)
+	c, err := streetlights.NewClient("", streetlights.WithPublisher(pub))
+	require.NoError(t, err)
 	require.NoError(t, c.SendLightCommand(context.Background(), &streetlights.LightCommand{
 		Payload: streetlights.LightCommandPayload{
 			Command: streetlights.NewOptLightCommandPayloadCommand(streetlights.LightCommandPayloadCommandOn),

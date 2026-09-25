@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/NefixEstrada/agen/runtime/broker"
+	redisruntime "github.com/NefixEstrada/agen/runtime/redis"
 )
 
 // publishConfig carries options applied on top of a generated message.
@@ -38,16 +39,31 @@ func WithHeader(k, v string) PublishOption {
 }
 
 // Client publishes messages of the application's `send` operations to a
-// broker via a runtime Publisher.
+// broker.
 type Client struct {
 	publisher broker.Publisher
 }
 
-// NewClient creates a Client publishing with the given Publisher.
-func NewClient(publisher broker.Publisher) *Client {
+// NewClient creates new Client defined by AAS, wiring the runtime publisher
+// of the spec protocol.
+//
+// Pass WithPublisher to reuse an existing runtime Publisher instead.
+func NewClient(addr string, opts ...ClientOption) (*Client, error) {
+	cfg := newClientConfig(opts...)
+	publisher := cfg.Publisher
+	if publisher == nil {
+		p, err := redisruntime.NewPublisher(redisruntime.PublisherConfig{
+			Addr: addr,
+			Mode: cfg.Mode,
+		})
+		if err != nil {
+			return nil, err
+		}
+		publisher = p
+	}
 	return &Client{
 		publisher: publisher,
-	}
+	}, nil
 }
 
 // Close closes the underlying publisher.

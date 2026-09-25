@@ -4,6 +4,9 @@ package streetlights
 
 import (
 	"fmt"
+
+	"github.com/NefixEstrada/agen/runtime/broker"
+	redisruntime "github.com/NefixEstrada/agen/runtime/redis"
 )
 
 // BuildLightMeasuredAddress builds the "lightMeasured" channel address from
@@ -21,19 +24,157 @@ func BuildLightMeasuredAddress(streetlightId string) (string, error) {
 // LightCommandAddress is the static address of the "lightCommand" channel.
 const LightCommandAddress = "streetlights.command"
 
-// ServerInfo describes a spec server entry.
-type ServerInfo struct {
-	Name            string
-	Host            string
-	Protocol        string
-	ProtocolVersion string
+type (
+	optionFunc[C any] func(*C)
+)
+
+// Mode selects the broker mapping used by the generated client and server
+// (redis: streams or pubsub, see runtime/redis).
+type Mode = redisruntime.Mode
+
+// Supported broker mapping modes.
+const (
+	// ModeStreams is the durable at-least-once mapping (default).
+	ModeStreams = redisruntime.ModeStreams
+	// ModePubSub is the fire-and-forget mapping.
+	ModePubSub = redisruntime.ModePubSub
+)
+
+// modeOption sets the broker mapping mode on every config that has one.
+type modeOption struct{ mode Mode }
+
+func (o modeOption) applyClient(c *clientConfig) { c.Mode = o.mode }
+func (o modeOption) applyServer(c *serverConfig) { c.Mode = o.mode }
+
+type serverConfig struct {
+	Addr       string
+	Group      string
+	Mode       Mode
+	Addresses  []string
+	Middleware []Middleware
 }
 
-// Spec servers, from the AsyncAPI document.
-var Servers = []ServerInfo{
-	{
-		Name:     "production",
-		Host:     "redis.example.io:6379",
-		Protocol: "redis",
-	},
+// ServerOption is server config option.
+type ServerOption interface {
+	applyServer(*serverConfig)
+}
+
+var _ ServerOption = (optionFunc[serverConfig])(nil)
+
+func (o optionFunc[C]) applyServer(c *C) {
+	o(c)
+}
+
+func newServerConfig(opts ...ServerOption) serverConfig {
+	cfg := serverConfig{}
+	for _, opt := range opts {
+		opt.applyServer(&cfg)
+	}
+	return cfg
+}
+
+// addr returns the broker address: WithAddr when set, else the first spec
+// server.
+func (cfg serverConfig) addr() string {
+	if cfg.Addr != "" {
+		return cfg.Addr
+	}
+	return string(ProductionServer)
+}
+
+// addresses returns the addresses to consume: WithAddresses when set, else
+// the static addresses of the receive channels.
+func (cfg serverConfig) addresses() []string {
+	if len(cfg.Addresses) > 0 {
+		return cfg.Addresses
+	}
+	return []string{}
+}
+
+type clientConfig struct {
+	Publisher broker.Publisher
+	Mode      Mode
+}
+
+// ClientOption is client config option.
+type ClientOption interface {
+	applyClient(*clientConfig)
+}
+
+var _ ClientOption = (optionFunc[clientConfig])(nil)
+
+func (o optionFunc[C]) applyClient(c *C) {
+	o(c)
+}
+
+func newClientConfig(opts ...ClientOption) clientConfig {
+	cfg := clientConfig{}
+	for _, opt := range opts {
+		opt.applyClient(&cfg)
+	}
+	return cfg
+}
+
+// Option is config option.
+type Option interface {
+	ServerOption
+	ClientOption
+}
+
+// WithPublisher specifies the runtime Publisher to use.
+//
+// It is the low-level escape hatch for protocols without a runtime backend
+// and for sharing a connection in tests. If none is specified, the client
+// wires the backend of the spec protocol itself.
+func WithPublisher(publisher broker.Publisher) ClientOption {
+	return optionFunc[clientConfig](func(cfg *clientConfig) {
+		if publisher != nil {
+			cfg.Publisher = publisher
+		}
+	})
+}
+
+// WithMode sets the broker mapping mode (streams by default; pubsub for
+// fire-and-forget).
+func WithMode(mode Mode) Option {
+	return modeOption{mode: mode}
+}
+
+// WithAddr sets the broker address of the server; by default the first
+// server of the AsyncAPI document.
+func WithAddr(addr string) ServerOption {
+	return optionFunc[serverConfig](func(cfg *serverConfig) {
+		if addr != "" {
+			cfg.Addr = addr
+		}
+	})
+}
+
+// WithGroup sets the consumer group name; required in streams mode.
+func WithGroup(group string) ServerOption {
+	return optionFunc[serverConfig](func(cfg *serverConfig) {
+		if group != "" {
+			cfg.Group = group
+		}
+	})
+}
+
+// WithAddresses sets the addresses (streams, channels or glob patterns) to
+// consume, overriding the static addresses of the receive channels.
+func WithAddresses(addresses ...string) ServerOption {
+	return optionFunc[serverConfig](func(cfg *serverConfig) {
+		if len(addresses) > 0 {
+			cfg.Addresses = append(cfg.Addresses, addresses...)
+		}
+	})
+}
+
+// WithMiddleware adds middlewares to the subscriber dispatch chain; the
+// first middleware is the outermost.
+func WithMiddleware(mw ...Middleware) ServerOption {
+	return optionFunc[serverConfig](func(cfg *serverConfig) {
+		if len(mw) > 0 {
+			cfg.Middleware = append(cfg.Middleware, mw...)
+		}
+	})
 }
