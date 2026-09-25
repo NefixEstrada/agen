@@ -54,7 +54,6 @@ func NewClient(addr string, opts ...ClientOption) (*Client, error) {
 	if publisher == nil {
 		p, err := redisruntime.NewPublisher(redisruntime.PublisherConfig{
 			Addr: addr,
-			Mode: cfg.Mode,
 		})
 		if err != nil {
 			return nil, err

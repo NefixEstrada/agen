@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/NefixEstrada/agen/runtime/broker"
-	redisruntime "github.com/NefixEstrada/agen/runtime/redis"
 )
 
 // BuildLightMeasuredAddress builds the "lightMeasured" channel address from
@@ -27,27 +26,8 @@ const LightCommandAddress = "streetlights.command"
 type (
 	optionFunc[C any] func(*C)
 )
-
-// Mode selects the broker mapping used by the generated client and server
-// (redis: streams or pubsub, see runtime/redis).
-type Mode = redisruntime.Mode
-
-// Supported broker mapping modes.
-const (
-	// ModeStreams is the durable at-least-once mapping (default).
-	ModeStreams = redisruntime.ModeStreams
-	// ModePubSub is the fire-and-forget mapping.
-	ModePubSub = redisruntime.ModePubSub
-)
-
-// modeOption sets the broker mapping mode on every config that has one.
-type modeOption struct{ mode Mode }
-
-func (o modeOption) applyClient(c *clientConfig) { c.Mode = o.mode }
-
 type clientConfig struct {
 	Publisher broker.Publisher
-	Mode      Mode
 }
 
 // ClientOption is client config option.
@@ -80,10 +60,4 @@ func WithPublisher(publisher broker.Publisher) ClientOption {
 			cfg.Publisher = publisher
 		}
 	})
-}
-
-// WithMode sets the broker mapping mode (streams by default; pubsub for
-// fire-and-forget).
-func WithMode(mode Mode) ClientOption {
-	return modeOption{mode: mode}
 }

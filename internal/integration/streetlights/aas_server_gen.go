@@ -32,9 +32,8 @@ func NewServer(h Handler, opts ...ServerOption) (*Server, error) {
 	}
 	consumer, err := redisruntime.NewConsumer(redisruntime.ConsumerConfig{
 		Addr:      cfg.addr(),
-		Mode:      cfg.Mode,
 		Addresses: addresses,
-		Group:     cfg.Group,
+		Group:     "streetlights-app",
 	})
 	if err != nil {
 		return nil, err

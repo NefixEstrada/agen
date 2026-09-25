@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/NefixEstrada/agen/runtime/broker"
-	redisruntime "github.com/NefixEstrada/agen/runtime/redis"
 )
 
 // BuildLightMeasuredAddress builds the "lightMeasured" channel address from
@@ -28,28 +27,8 @@ type (
 	optionFunc[C any] func(*C)
 )
 
-// Mode selects the broker mapping used by the generated client and server
-// (redis: streams or pubsub, see runtime/redis).
-type Mode = redisruntime.Mode
-
-// Supported broker mapping modes.
-const (
-	// ModeStreams is the durable at-least-once mapping (default).
-	ModeStreams = redisruntime.ModeStreams
-	// ModePubSub is the fire-and-forget mapping.
-	ModePubSub = redisruntime.ModePubSub
-)
-
-// modeOption sets the broker mapping mode on every config that has one.
-type modeOption struct{ mode Mode }
-
-func (o modeOption) applyClient(c *clientConfig) { c.Mode = o.mode }
-func (o modeOption) applyServer(c *serverConfig) { c.Mode = o.mode }
-
 type serverConfig struct {
 	Addr       string
-	Group      string
-	Mode       Mode
 	Addresses  []string
 	Middleware []Middleware
 }
@@ -93,7 +72,6 @@ func (cfg serverConfig) addresses() []string {
 
 type clientConfig struct {
 	Publisher broker.Publisher
-	Mode      Mode
 }
 
 // ClientOption is client config option.
@@ -134,27 +112,12 @@ func WithPublisher(publisher broker.Publisher) ClientOption {
 	})
 }
 
-// WithMode sets the broker mapping mode (streams by default; pubsub for
-// fire-and-forget).
-func WithMode(mode Mode) Option {
-	return modeOption{mode: mode}
-}
-
 // WithAddr sets the broker address of the server; by default the first
 // server of the AsyncAPI document.
 func WithAddr(addr string) ServerOption {
 	return optionFunc[serverConfig](func(cfg *serverConfig) {
 		if addr != "" {
 			cfg.Addr = addr
-		}
-	})
-}
-
-// WithGroup sets the consumer group name; required in streams mode.
-func WithGroup(group string) ServerOption {
-	return optionFunc[serverConfig](func(cfg *serverConfig) {
-		if group != "" {
-			cfg.Group = group
 		}
 	})
 }
