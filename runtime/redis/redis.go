@@ -236,6 +236,7 @@ type Consumer struct {
 	client redis.UniversalClient
 	own    bool
 	cfg    ConsumerConfig
+	ready  chan struct{}
 }
 
 // NewConsumer creates a Redis consumer.
@@ -277,7 +278,22 @@ func NewConsumer(cfg ConsumerConfig) (*Consumer, error) {
 		client: client,
 		own:    own,
 		cfg:    cfg,
+		ready:  make(chan struct{}),
 	}, nil
+}
+
+// Ready is closed once subscriptions and consumer groups are established:
+// publishing before readiness may lose messages in pubsub mode.
+func (c *Consumer) Ready() <-chan struct{} {
+	return c.ready
+}
+
+func (c *Consumer) markReady() {
+	select {
+	case <-c.ready:
+	default:
+		close(c.ready)
+	}
 }
 
 // Run consumes until ctx is cancelled, dispatching every message to d.
@@ -315,6 +331,8 @@ func (c *Consumer) runStreams(ctx context.Context, d broker.Dispatcher) error {
 			return errors.Wrapf(err, "create group %q on %q", c.cfg.Group, addr)
 		}
 	}
+
+	c.markReady()
 
 	var wg sync.WaitGroup
 	if c.cfg.MaxDeliveries > 0 {
@@ -440,6 +458,7 @@ func (c *Consumer) runPubSub(ctx context.Context, d broker.Dispatcher) error {
 	if _, err := pubsub.Receive(ctx); err != nil {
 		return errors.Wrap(err, "psubscribe")
 	}
+	c.markReady()
 
 	ch := pubsub.Channel()
 	for {

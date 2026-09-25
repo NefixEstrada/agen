@@ -1,0 +1,41 @@
+asyncapi: 3.0.0
+info:
+  title: Streetlights Redis Demo
+  version: 1.0.0
+  description: >
+    A self-contained demo of agen's Redis runtime: the application publishes
+    light commands on a stream and receives them back (echo), exercising the
+    full typed pipeline (publish -> XADD -> XREADGROUP -> decode -> validate
+    -> handler -> XACK).
+servers:
+  local:
+    host: localhost:6379
+    protocol: redis
+defaultContentType: application/json
+channels:
+  lightCommand:
+    address: streetlights.command
+    title: Light commands
+    messages:
+      lightCommand:
+        payload:
+          type: object
+          properties:
+            command:
+              type: string
+              enum: ["on", "off"]
+            sentAt:
+              type: string
+              format: date-time
+          required: [command, sentAt]
+operations:
+  sendLightCommand:
+    action: send
+    channel:
+      $ref: '#/channels/lightCommand'
+    summary: Publish a light command.
+  receiveLightCommand:
+    action: receive
+    channel:
+      $ref: '#/channels/lightCommand'
+    summary: Receive light commands (demo consumer).
