@@ -27,13 +27,12 @@ Implemented (matching DESIGN.md milestones M0–M2):
 - Committed generated packages under `internal/integration/` (streetlights, orders) regenerated via `go:generate`
   and behavior-tested, including Redis round-trips against miniredis.
 
-Also implemented: `x-agen-*` specification extensions (aliased to ogen's `x-ogen-*` engine hooks:
-`x-agen-name` on operations/channels/messages overrides Go names, `x-agen-type`, `x-agen-properties`,
-`x-agen-time-format`, `x-agen-validate` on schemas), the `generator.initialisms` naming option,
-`expand.output` (fully-dereferenced spec dump; internal `$ref`s are inlined, external/recursive ones kept),
-and `operation.reply` support (the reply of a receive operation is generated as a typed publish surface:
-`client.<Operation>Reply(...)` on the reply channel; automatic reply dispatch and correlationId plumbing are
-future work).
+Also implemented: [specification extensions](docs/extensions.md) (`x-agen-*`, mirroring ogen's
+`x-ogen-*` family: custom names, fields, types, time formats and pluggable validators), the
+`generator.initialisms` naming option, `expand.output` (fully-dereferenced spec dump; internal
+`$ref`s are inlined, external/recursive ones kept), and `operation.reply` support (the reply of a
+receive operation is generated as a typed publish surface: `client.<Operation>Reply(...)` on the
+reply channel; automatic reply dispatch and correlationId plumbing are future work).
 
 Not yet implemented (see DESIGN.md roadmap): Kafka/MQTT/AMQP/NATS/WS backends (codegen is already
 protocol-agnostic; Redis is the only runtime for now), Avro payloads, OTel instrumentation, official
