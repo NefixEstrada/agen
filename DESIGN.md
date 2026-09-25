@@ -100,37 +100,37 @@ operations:
 `agen --config agen.yml` writes into `./api` (package `streetlights`), ogen-style file naming:
 
 ```go
-// oas_msg_gen.go — per-message envelope: headers + payload (schema engine output)
+// aas_msg_gen.go — per-message envelope: headers + payload (schema engine output)
 type LightMeasured struct {
     Headers LightMeasuredHeaders `json:"-"`   // decoded from broker/protocol headers
     Payload LightMeasuredPayload `json:"-"`   // decoded from body per contentType
 }
 
-// oas_schemas_gen.go — plain ogen-quality types
+// aas_schemas_gen.go — plain ogen-quality types
 type LightMeasuredPayload struct {
     Lumens int       `json:"lumens"`
     SentAt time.Time `json:"sentAt"`
 }
 
-// oas_json_gen.go — jx streaming encoders/decoders (no reflection)
-// oas_validators_gen.go — Validate() per type (min/max/pattern/enums/…)
+// aas_json_gen.go — jx streaming encoders/decoders (no reflection)
+// aas_validators_gen.go — Validate() per type (min/max/pattern/enums/…)
 func (s *LightMeasuredPayload) Validate() error { /* … */ }
 
-// oas_handlers_gen.go — consumer side (action: receive)
+// aas_handlers_gen.go — consumer side (action: receive)
 type ReceiveLightMeasurementHandler interface {
     ReceiveLightMeasurement(ctx context.Context, msg *LightMeasured) error
 }
 
-// oas_client_gen.go — producer side (action: send)
+// aas_client_gen.go — producer side (action: send)
 type Client struct { /* … */ }
 func (c *Client) SendLightCommand(ctx context.Context, msg *LightCommand, opts ...PublishOption) error
 
-// oas_subscriber_gen.go — wiring: raw incoming → decode → validate → dispatch (with middlewares)
+// aas_subscriber_gen.go — wiring: raw incoming → decode → validate → dispatch (with middlewares)
 type Subscriber struct { /* … */ }
 func (s *Subscriber) Dispatch(ctx context.Context, raw runtime.Incoming) error
 
-// oas_cfg_gen.go — servers, addresses (with channel-parameter templating), content types
-// oas_middleware_gen.go, oas_fakes_gen.go, oas_unimplemented_gen.go — ogen-equivalents
+// aas_cfg_gen.go — servers, addresses (with channel-parameter templating), content types
+// aas_middleware_gen.go, aas_fakes_gen.go, aas_unimplemented_gen.go — ogen-equivalents
 ```
 
 User code (the part agen never touches):

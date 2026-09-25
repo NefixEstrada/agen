@@ -261,7 +261,7 @@ func (g *Generator) WriteSource(fs FileSystem, pkgName string) error {
 		if !t.enabled {
 			continue
 		}
-		fileName := fmt.Sprintf("oas_%s_gen.go", t.name)
+		fileName := fmt.Sprintf("aas_%s_gen.go", t.name)
 		if err := w.Generate(t.name, fileName, cfg); err != nil {
 			return errors.Wrapf(err, "template %q", t.name)
 		}

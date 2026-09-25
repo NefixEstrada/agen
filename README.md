@@ -110,8 +110,10 @@ go generate ./internal/integration/...  # regenerate committed packages after te
 ```
 
 `examples/` is a separate module with committed generated code for real public AsyncAPI documents (the
-canonical Streetlights Kafka spec plus official-converter outputs of 2.6 documents); see
-[examples/README.md](examples/README.md).
+canonical Streetlights Kafka spec plus official-converter outputs of 2.6 documents) and a runnable Redis
+demo (`go run ./examples/redis`); see [examples/README.md](examples/README.md).
+
+Generated files are named `aas_*_gen.go` (AsyncAPI spec, mirroring ogen's `oas_*` convention).
 
 See `DESIGN.md` for the full design document and `THIRD_PARTY.md` + the per-directory `UPSTREAM.md` files for
 the ogen vendoring manifest.

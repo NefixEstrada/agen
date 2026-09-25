@@ -28,3 +28,17 @@ where noted; see the `LICENSE` and `NOTICE` files of the upstream repositories.
 
 Documents that agen cannot generate yet are deliberately not included (e.g. converter outputs with external
 `https://` message references or Avro `schemaFormat`) — they are future work tracked in the roadmap.
+
+## Runnable Redis demo
+
+`redis/` is a self-contained runnable example of the Redis runtime (agen's own demo spec, not an upstream
+document): it publishes typed light commands and receives them back through a consumer group —
+publish → XADD → XREADGROUP → decode → validate → handler → XACK. Start a Redis server and:
+
+```sh
+go run ./redis                # streams mode (default)
+go run ./redis -mode pubsub   # fire-and-forget Pub/Sub mode
+go run ./redis -n 5 -addr redis.example.io:6379
+```
+
+`redis/main_test.go` runs the same flow against an in-memory Redis (miniredis).
