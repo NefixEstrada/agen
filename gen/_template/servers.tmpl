@@ -1,0 +1,40 @@
+{{- /*gotype: github.com/NefixEstrada/agen/gen.TemplateConfig*/ -}}
+
+{{- define "servers/server_doc" -}}
+{{- /*gotype: github.com/NefixEstrada/agen/internal/ir.Server*/ -}}
+// {{ .GoName }}Server is the address of the {{ .Name | quote }} server.{{ if .Protocol }} Protocol: {{ .Protocol }}{{ if .ProtocolVersion }} ({{ .ProtocolVersion }}){{ end }}.{{ end }}
+{{- if .Description }}
+{{- range $line := .Description | splitLines }}
+// {{ $line }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{ define "servers" }}
+{{ template "header" $ }}
+
+// serverConst is a constant server address from the AsyncAPI document.
+type serverConst string
+
+{{- range $s := $.Servers }}
+
+{{ template "servers/server_doc" $s }}
+const {{ $s.GoName }}Server serverConst = {{ $s.Host | quote }}
+{{- end }}
+
+// Build returns the server address.
+func (s serverConst) Build() (string, error) {
+	return string(s), nil
+}
+
+// MustBuild is like Build, but panics on error. It never errors for constant
+// servers; it is kept for interface parity.
+func (s serverConst) MustBuild() string {
+	addr, err := s.Build()
+	if err != nil {
+		panic(err)
+	}
+	return addr
+}
+
+{{ end }}

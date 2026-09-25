@@ -116,6 +116,8 @@ func (m *Message) HasPayload() bool { return m.Payload != nil }
 type Server struct {
 	// Name is the server key, e.g. "production".
 	Name string
+	// GoName is the Go identifier, e.g. "Production".
+	GoName string
 	// Host is the broker host (e.g. "redis.example.io:6379").
 	Host string
 	// Protocol is the server protocol (e.g. "redis").

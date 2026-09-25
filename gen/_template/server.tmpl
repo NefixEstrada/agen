@@ -1,0 +1,61 @@
+{{- /*gotype: github.com/NefixEstrada/agen/gen.TemplateConfig*/ -}}
+
+{{ define "server" }}
+{{ template "header" $ }}
+
+// Server consumes messages of the application's `receive` operations from
+// the spec's broker, dispatching them to the Handler (decode → validate →
+// typed handler → acknowledge).
+type Server struct {
+	h          Handler
+	subscriber *Subscriber
+	consumer   *redisruntime.Consumer
+}
+
+// NewServer creates new Server, wiring the runtime consumer of the spec
+// protocol.
+//
+// Unlike ogen's HTTP Server (an http.Handler driven by net/http), a broker
+// server has no stdlib driver: call Run to consume.
+func NewServer(h Handler, opts ...ServerOption) (*Server, error) {
+	cfg := newServerConfig(opts...)
+	sub := NewSubscriber(NewHandler(h), cfg.Middleware...)
+	addresses := cfg.addresses()
+	if len(addresses) == 0 {
+		return nil, fmt.Errorf("agen: no static channel addresses to consume: parameterized channels need WithAddresses")
+	}
+	consumer, err := redisruntime.NewConsumer(redisruntime.ConsumerConfig{
+		Addr:      cfg.addr(),
+		Mode:      cfg.Mode,
+		Addresses: addresses,
+		Group:     cfg.Group,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Server{
+		h:          h,
+		subscriber: sub,
+		consumer:   consumer,
+	}, nil
+}
+
+// Ready is closed once subscriptions and consumer groups are established:
+// publishing before readiness may lose messages in pubsub mode.
+func (s *Server) Ready() <-chan struct{} {
+	return s.consumer.Ready()
+}
+
+// Run consumes until ctx is cancelled, dispatching every message to the
+// subscriber. A handler error leaves the entry pending for redelivery
+// (streams mode).
+func (s *Server) Run(ctx context.Context) error {
+	return s.consumer.Run(ctx, s.subscriber)
+}
+
+// Close closes the underlying consumer.
+func (s *Server) Close(ctx context.Context) error {
+	return s.consumer.Close(ctx)
+}
+
+{{ end }}

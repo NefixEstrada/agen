@@ -114,18 +114,21 @@ type Generator struct {
 	features Features
 	log      *zap.Logger
 
-	engine      *lowering.Engine
-	tstorage    lowering.TStorageView
-	operations  []*ir.Operation
-	channels    []*ir.Channel
-	servers     []*ir.Server
-	info        APIInfo
-	imports     map[string]string
-	builtMsgs   map[*parser.Message]*ir.Message
-	sumTypes    map[string]*ir.Type
-	seenNames   map[string]struct{}
-	refNames    map[string]string // schema ref ptr -> type name
-	refNameUsed map[string]struct{}
+	engine     *lowering.Engine
+	tstorage   lowering.TStorageView
+	operations []*ir.Operation
+	channels   []*ir.Channel
+	servers    []*ir.Server
+	info       APIInfo
+	imports    map[string]string
+	// equalitySpecs are types requiring Equal() and Hash() methods for
+	// complex uniqueItems validation.
+	equalitySpecs []*ir.EqualityMethodSpec
+	builtMsgs     map[*parser.Message]*ir.Message
+	sumTypes      map[string]*ir.Type
+	seenNames     map[string]struct{}
+	refNames      map[string]string // schema ref ptr -> type name
+	refNameUsed   map[string]struct{}
 }
 
 // NewGenerator parses the API model into IR.
@@ -246,6 +249,25 @@ var protocolsWithBackend = map[string]bool{
 	"redis": true,
 }
 
+// brokerBackend reports whether all spec servers share a single protocol with
+// a shipped runtime backend, and that protocol. Server/client constructors
+// wire the backend internally only in that case.
+func brokerBackend(servers []*ir.Server) (wired bool, protocol string) {
+	for _, s := range servers {
+		if !protocolsWithBackend[s.Protocol] {
+			return false, s.Protocol
+		}
+		switch protocol {
+		case "":
+			protocol = s.Protocol
+		case s.Protocol:
+		default:
+			return false, protocol
+		}
+	}
+	return protocol != "", protocol
+}
+
 func (g *Generator) build(api *parser.API) error {
 	g.info = APIInfo{
 		Title:       api.Info.Title,
@@ -268,13 +290,24 @@ func (g *Generator) build(api *parser.API) error {
 				zap.String("server", name),
 			)
 		}
+		goName, err := g.pascalName(s.Name)
+		if err != nil {
+			return errors.Wrapf(err, "server name %q", name)
+		}
 		g.servers = append(g.servers, &ir.Server{
 			Name:            s.Name,
+			GoName:          goName,
 			Host:            s.Host,
 			Protocol:        s.Protocol,
 			ProtocolVersion: s.ProtocolVersion,
 			Description:     s.Description,
 		})
+	}
+
+	// Server/client constructors wire the backend only when every server
+	// shares one backend-wired protocol; generated code then imports it.
+	if wired, _ := brokerBackend(g.servers); wired {
+		g.imports["github.com/NefixEstrada/agen/runtime/redis"] = "redisruntime"
 	}
 
 	// Filter operations.
@@ -331,6 +364,10 @@ func (g *Generator) build(api *parser.API) error {
 	}
 
 	g.tstorage = g.engine.Types()
+
+	// Collect types that need Equal() and Hash() methods for complex uniqueItems validation
+	g.collectEqualitySpecs()
+
 	return nil
 }
 

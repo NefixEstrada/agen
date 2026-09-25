@@ -1,0 +1,46 @@
+asyncapi: 3.0.0
+info:
+  title: Unique Items
+  version: 1.0.0
+  description: >
+    Corpus case for uniqueItems over arrays of objects: exercises generated
+    Equal()/Hash() methods and validateUnique* functions.
+servers:
+  local:
+    host: localhost:6379
+    protocol: redis
+defaultContentType: application/json
+channels:
+  telemetry:
+    address: telemetry.readings
+    messages:
+      readings:
+        payload:
+          type: object
+          required: [readings]
+          properties:
+            readings:
+              type: array
+              uniqueItems: true
+              items:
+                type: object
+                required: [sensorId, value]
+                properties:
+                  sensorId:
+                    type: string
+                  value:
+                    type: number
+                  tags:
+                    type: array
+                    uniqueItems: true
+                    items:
+                      type: string
+operations:
+  sendReadings:
+    action: send
+    channel:
+      $ref: '#/channels/telemetry'
+  receiveReadings:
+    action: receive
+    channel:
+      $ref: '#/channels/telemetry'

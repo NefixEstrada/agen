@@ -42,6 +42,209 @@ const {{ $ch.GoName }}Address = {{ $ch.Address | quote }}
 {{- end }}
 {{- end -}}
 
+{{- define "cfg/options" -}}
+{{- $client := $.ClientEnabled -}}
+{{- $server := $.ServerEnabled -}}
+{{- $wired := $.BrokerWired -}}
+
+{{- if or $client $server }}
+
+type (
+	optionFunc[C any] func(*C)
+)
+
+{{- if $wired }}
+// Mode selects the broker mapping used by the generated client and server
+// (redis: streams or pubsub, see runtime/redis).
+type Mode = redisruntime.Mode
+
+// Supported broker mapping modes.
+const (
+	// ModeStreams is the durable at-least-once mapping (default).
+	ModeStreams = redisruntime.ModeStreams
+	// ModePubSub is the fire-and-forget mapping.
+	ModePubSub = redisruntime.ModePubSub
+)
+
+// modeOption sets the broker mapping mode on every config that has one.
+type modeOption struct{ mode Mode }
+
+{{- if $client }}
+func (o modeOption) applyClient(c *clientConfig) { c.Mode = o.mode }
+{{- end }}
+{{- if $server }}
+func (o modeOption) applyServer(c *serverConfig) { c.Mode = o.mode }
+{{- end }}
+{{- end }}
+
+{{- if $server }}
+{{- if not $.MiddlewareEnabled }}
+// Middleware is middleware type.
+type Middleware = broker.Middleware
+{{- end }}
+
+type serverConfig struct {
+	Addr       string
+	Group      string
+{{- if $wired }}
+	Mode       Mode
+{{- end }}
+	Addresses  []string
+	Middleware []Middleware
+}
+
+// ServerOption is server config option.
+type ServerOption interface {
+	applyServer(*serverConfig)
+}
+
+var _ ServerOption = (optionFunc[serverConfig])(nil)
+
+func (o optionFunc[C]) applyServer(c *C) {
+	o(c)
+}
+
+func newServerConfig(opts ...ServerOption) serverConfig {
+	cfg := serverConfig{}
+	for _, opt := range opts {
+		opt.applyServer(&cfg)
+	}
+	return cfg
+}
+
+{{- if $.Servers }}
+// addr returns the broker address: WithAddr when set, else the first spec
+// server.
+func (cfg serverConfig) addr() string {
+	if cfg.Addr != "" {
+		return cfg.Addr
+	}
+	return string({{ (index $.Servers 0).GoName }}Server)
+}
+{{- else }}
+func (cfg serverConfig) addr() string {
+	return cfg.Addr
+}
+{{- end }}
+
+// addresses returns the addresses to consume: WithAddresses when set, else
+// the static addresses of the receive channels.
+func (cfg serverConfig) addresses() []string {
+	if len(cfg.Addresses) > 0 {
+		return cfg.Addresses
+	}
+	return []string{
+	{{- range $ch := $.ReceiveChannels }}
+		{{ $ch.GoName }}Address,
+	{{- end }}
+	}
+}
+{{- end }}
+
+{{- if $client }}
+type clientConfig struct {
+	Publisher broker.Publisher
+{{- if $wired }}
+	Mode      Mode
+{{- end }}
+}
+
+// ClientOption is client config option.
+type ClientOption interface {
+	applyClient(*clientConfig)
+}
+
+var _ ClientOption = (optionFunc[clientConfig])(nil)
+
+func (o optionFunc[C]) applyClient(c *C) {
+	o(c)
+}
+
+func newClientConfig(opts ...ClientOption) clientConfig {
+	cfg := clientConfig{}
+	for _, opt := range opts {
+		opt.applyClient(&cfg)
+	}
+	return cfg
+}
+{{- end }}
+
+{{- if and $client $server }}
+// Option is config option.
+type Option interface {
+	ServerOption
+	ClientOption
+}
+{{- end }}
+
+{{- if $client }}
+// WithPublisher specifies the runtime Publisher to use.
+//
+// It is the low-level escape hatch for protocols without a runtime backend
+// and for sharing a connection in tests. If none is specified, the client
+// wires the backend of the spec protocol itself.
+func WithPublisher(publisher broker.Publisher) ClientOption {
+	return optionFunc[clientConfig](func(cfg *clientConfig) {
+		if publisher != nil {
+			cfg.Publisher = publisher
+		}
+	})
+}
+{{- end }}
+
+{{- if $wired }}
+// WithMode sets the broker mapping mode (streams by default; pubsub for
+// fire-and-forget).
+func WithMode(mode Mode) {{ if and $client $server }}Option{{ else if $client }}ClientOption{{ else }}ServerOption{{ end }} {
+	return modeOption{mode: mode}
+}
+{{- end }}
+
+{{- if $server }}
+// WithAddr sets the broker address of the server; by default the first
+// server of the AsyncAPI document.
+func WithAddr(addr string) ServerOption {
+	return optionFunc[serverConfig](func(cfg *serverConfig) {
+		if addr != "" {
+			cfg.Addr = addr
+		}
+	})
+}
+
+// WithGroup sets the consumer group name; required in streams mode.
+func WithGroup(group string) ServerOption {
+	return optionFunc[serverConfig](func(cfg *serverConfig) {
+		if group != "" {
+			cfg.Group = group
+		}
+	})
+}
+
+// WithAddresses sets the addresses (streams, channels or glob patterns) to
+// consume, overriding the static addresses of the receive channels.
+func WithAddresses(addresses ...string) ServerOption {
+	return optionFunc[serverConfig](func(cfg *serverConfig) {
+		if len(addresses) > 0 {
+			cfg.Addresses = append(cfg.Addresses, addresses...)
+		}
+	})
+}
+
+// WithMiddleware adds middlewares to the subscriber dispatch chain; the
+// first middleware is the outermost.
+func WithMiddleware(mw ...Middleware) ServerOption {
+	return optionFunc[serverConfig](func(cfg *serverConfig) {
+		if len(mw) > 0 {
+			cfg.Middleware = append(cfg.Middleware, mw...)
+		}
+	})
+}
+{{- end }}
+
+{{- end }}
+
+{{- end -}}
+
 {{- define "cfg" }}
 
 {{ template "header" $ }}
@@ -50,28 +253,6 @@ const {{ $ch.GoName }}Address = {{ $ch.Address | quote }}
 {{ template "cfg/channel_builder" $ch }}
 {{- end }}
 
-{{- if $.Servers }}
-// ServerInfo describes a spec server entry.
-type ServerInfo struct {
-	Name            string
-	Host            string
-	Protocol        string
-	ProtocolVersion string
-}
-
-// Spec servers, from the AsyncAPI document.
-var Servers = []ServerInfo{
-{{- range $s := $.Servers }}
-	{
-		Name:            {{ $s.Name | quote }},
-		Host:            {{ $s.Host | quote }},
-		Protocol:        {{ $s.Protocol | quote }},
-		{{- if $s.ProtocolVersion }}
-		ProtocolVersion: {{ $s.ProtocolVersion | quote }},
-		{{- end }}
-	},
-{{- end }}
-}
-{{- end }}
+{{ template "cfg/options" $ }}
 
 {{ end }}

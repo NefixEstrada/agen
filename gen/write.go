@@ -43,6 +43,14 @@ type TemplateConfig struct {
 	UnimplementedGiven bool
 	GenerateFakes      bool
 
+	// BrokerWired is true when all spec servers share a single protocol with
+	// a shipped runtime backend (currently redis): server/client constructors
+	// then wire that backend internally.
+	BrokerWired bool
+	// BrokerProtocol is the servers' protocol, empty when the spec declares
+	// no servers.
+	BrokerProtocol string
+
 	// RuntimeImport is the base import path of the agen runtime.
 	RuntimeImport string
 }
@@ -57,6 +65,34 @@ type APIInfo struct {
 // AnyOperationEnabled returns true if there is anything to generate.
 func (t TemplateConfig) AnyOperationEnabled() bool {
 	return len(t.Operations) > 0
+}
+
+// ClientEnabled returns true when the client (publisher) file is generated.
+func (t TemplateConfig) ClientEnabled() bool {
+	return t.PublisherEnabled && len(t.SendOperations) > 0
+}
+
+// ServerEnabled returns true when the server (consumer) file is generated:
+// only specs whose servers all share a backend-wired protocol can wire the
+// consumer internally.
+func (t TemplateConfig) ServerEnabled() bool {
+	return t.BrokerWired && t.SubscriberEnabled && len(t.ReceiveOperations) > 0
+}
+
+// ReceiveChannels returns the unique static-address channels consumed by
+// receive operations, in order of first use.
+func (t TemplateConfig) ReceiveChannels() []*ir.Channel {
+	seen := map[*ir.Channel]bool{}
+	var out []*ir.Channel
+	for _, op := range t.ReceiveOperations {
+		ch := op.Channel
+		if ch == nil || ch.HasParams() || seen[ch] {
+			continue
+		}
+		seen[ch] = true
+		out = append(out, ch)
+	}
+	return out
 }
 
 func (t TemplateConfig) collectStrings(cb func(typ *ir.Type) []string) []string {
@@ -218,6 +254,7 @@ func (g *Generator) WriteSource(fs FileSystem, pkgName string) error {
 		types[name] = t
 	}
 
+	wired, protocol := brokerBackend(g.servers)
 	cfg := TemplateConfig{
 		Package:           pkgName,
 		Operations:        g.operations,
@@ -237,6 +274,9 @@ func (g *Generator) WriteSource(fs FileSystem, pkgName string) error {
 		UnimplementedGiven: g.features.Has(Unimplemented),
 		GenerateFakes:      g.features.Has(Fakes),
 
+		BrokerWired:    wired,
+		BrokerProtocol: protocol,
+
 		RuntimeImport: "github.com/NefixEstrada/agen/runtime",
 	}
 
@@ -250,10 +290,13 @@ func (g *Generator) WriteSource(fs FileSystem, pkgName string) error {
 		{"validators", g.hasValidators()},
 		{"defaults", g.hasDefaultFields()},
 		{"cfg", true},
+		{"servers", len(cfg.Servers) > 0},
+		{"operations", cfg.AnyOperationEnabled()},
 		{"msg", true},
 		{"handlers", cfg.SubscriberEnabled && len(cfg.ReceiveOperations) > 0},
 		{"subscriber", cfg.SubscriberEnabled && len(cfg.ReceiveOperations) > 0},
-		{"client", cfg.PublisherEnabled && len(cfg.SendOperations) > 0},
+		{"server", cfg.ServerEnabled()},
+		{"client", cfg.ClientEnabled()},
 		{"middleware", cfg.MiddlewareEnabled && cfg.SubscriberEnabled && len(cfg.ReceiveOperations) > 0},
 		{"unimplemented", cfg.UnimplementedGiven && cfg.SubscriberEnabled && len(cfg.ReceiveOperations) > 0},
 		{"fakes", cfg.GenerateFakes},
@@ -264,6 +307,17 @@ func (g *Generator) WriteSource(fs FileSystem, pkgName string) error {
 		fileName := fmt.Sprintf("aas_%s_gen.go", t.name)
 		if err := w.Generate(t.name, fileName, cfg); err != nil {
 			return errors.Wrapf(err, "template %q", t.name)
+		}
+	}
+
+	// Generate Equal() and Hash() methods for complex uniqueItems validation
+	if len(g.equalitySpecs) > 0 {
+		if err := g.generateEqualityMethodsWithFS(fs, pkgName); err != nil {
+			return errors.Wrap(err, "equality methods")
+		}
+		// Generate validateUnique[TypeName]() functions for runtime validation
+		if err := g.generateUniqueValidators(fs, pkgName); err != nil {
+			return errors.Wrap(err, "unique validators")
 		}
 	}
 
