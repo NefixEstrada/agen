@@ -1,0 +1,62 @@
+{{- /*gotype: github.com/NefixEstrada/agen/gen.TemplateConfig*/ -}}
+
+{{- define "fakes" }}
+
+{{ template "header" $ }}
+
+// FakePublisher is a broker.Publisher that captures outgoing messages in
+// memory; use it to unit-test publishing code without a broker.
+type FakePublisher struct {
+	mu       sync.Mutex
+	Messages []broker.Outgoing
+	Err      error // returned by Publish when set
+}
+
+var _ broker.Publisher = (*FakePublisher)(nil)
+
+// Publish implements broker.Publisher.
+func (p *FakePublisher) Publish(ctx context.Context, out broker.Outgoing) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.Err != nil {
+		return p.Err
+	}
+	p.Messages = append(p.Messages, out)
+	return nil
+}
+
+// Close implements broker.Publisher.
+func (p *FakePublisher) Close(ctx context.Context) error { return nil }
+
+// Reset drops captured messages.
+func (p *FakePublisher) Reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Messages = nil
+}
+
+{{- range $op := $.ReceiveOperations }}
+
+// Fake{{ $op.Name }}Handler captures {{ $op.Name }} messages; Err, when set, is
+// returned by the handler.
+type Fake{{ $op.Name }}Handler struct {
+	mu      sync.Mutex
+	Messages []{{ $op.ArgGo }}
+	Err     error
+}
+
+var _ {{ $op.Name }}Handler = (*Fake{{ $op.Name }}Handler)(nil)
+
+// {{ $op.Name }} implements {{ $op.Name }}Handler.
+func (h *Fake{{ $op.Name }}Handler) {{ $op.Name }}(ctx context.Context, msg {{ $op.ArgGo }}) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.Err != nil {
+		return h.Err
+	}
+	h.Messages = append(h.Messages, msg)
+	return nil
+}
+{{- end }}
+
+{{ end }}

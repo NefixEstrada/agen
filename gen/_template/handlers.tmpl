@@ -1,0 +1,64 @@
+{{- /*gotype: github.com/NefixEstrada/agen/gen.TemplateConfig*/ -}}
+
+{{- define "handlers/op_doc" -}}
+{{- /*gotype: github.com/NefixEstrada/agen/internal/ir.Operation*/ -}}
+{{- range $line := .GoDoc }}
+// {{ $line }}
+{{- end }}
+{{- if not .GoDoc }}
+// {{ .Name }} handles the {{ .OperationID | quote }} operation.
+{{- end }}
+//
+// The message arrives from the {{ .Channel.Address | quote }} address.
+{{- end -}}
+
+{{- define "handlers" }}
+
+{{ template "header" $ }}
+
+{{- range $op := $.ReceiveOperations }}
+{{ template "handlers/op_doc" $op }}
+type {{ $op.Name }}Handler interface {
+	{{ $op.Name }}(ctx context.Context, msg {{ $op.ArgGo }}) error
+}
+
+{{- end }}
+
+// Handler handles all receive operations of the application.
+type Handler interface {
+{{- range $op := $.ReceiveOperations }}
+	{{ $op.Name }}(ctx context.Context, msg {{ $op.ArgGo }}) error
+{{- end }}
+}
+
+// SubscriberHandlers collects the handler of every receive operation.
+type SubscriberHandlers struct {
+{{- range $op := $.ReceiveOperations }}
+	{{ $op.Name }} {{ $op.Name }}Handler
+{{- end }}
+}
+
+// NewSubscriberHandlers builds SubscriberHandlers from per-operation handlers.
+func NewSubscriberHandlers(
+{{- range $i, $op := $.ReceiveOperations }}
+	h{{ $i }} {{ $op.Name }}Handler,
+{{- end }}
+) *SubscriberHandlers {
+	return &SubscriberHandlers{
+{{- range $i, $op := $.ReceiveOperations }}
+		{{ $op.Name }}: h{{ $i }},
+{{- end }}
+	}
+}
+
+// NewHandler builds SubscriberHandlers from a single Handler implementing
+// every receive operation.
+func NewHandler(h Handler) *SubscriberHandlers {
+	return &SubscriberHandlers{
+{{- range $op := $.ReceiveOperations }}
+		{{ $op.Name }}: h,
+{{- end }}
+	}
+}
+
+{{ end }}

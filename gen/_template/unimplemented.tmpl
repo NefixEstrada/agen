@@ -1,0 +1,20 @@
+{{- /*gotype: github.com/NefixEstrada/agen/gen.TemplateConfig*/ -}}
+
+{{- define "unimplemented" }}
+
+{{ template "header" $ }}
+
+// UnimplementedHandler returns agenerrors.ErrNotImplemented for every receive
+// operation. Useful during development: embed it and implement operations
+// incrementally.
+type UnimplementedHandler struct{}
+
+var _ Handler = UnimplementedHandler{}
+
+{{- range $op := $.ReceiveOperations }}
+func (UnimplementedHandler) {{ $op.Name }}(ctx context.Context, msg {{ $op.ArgGo }}) error {
+	return agenerrors.ErrNotImplemented
+}
+{{- end }}
+
+{{ end }}

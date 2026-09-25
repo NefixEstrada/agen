@@ -1,0 +1,77 @@
+{{- /*gotype: github.com/NefixEstrada/agen/gen.TemplateConfig*/ -}}
+
+{{- define "cfg/param_doc" -}}
+{{- /*gotype: github.com/NefixEstrada/agen/internal/ir.ChannelParam*/ -}}
+{{- if .Description -}}
+{{- range $line := .Description | splitLines -}}
+// {{ $line }}
+{{- end -}}
+{{- else -}}
+// {{ .GoName }} is the `{{ .Name }}` channel address parameter.
+{{- end -}}
+{{- end -}}
+
+{{- define "cfg/channel_builder" -}}
+{{- /*gotype: github.com/NefixEstrada/agen/internal/ir.Channel*/ -}}
+{{- $ch := . -}}
+{{- if .HasParams }}
+// Build{{ $ch.GoName }}Address builds the {{ $ch.Name | quote }} channel address from
+// parameters.
+{{- range $p := $ch.Params }}
+{{ template "cfg/param_doc" $p }}
+{{- end }}
+func Build{{ $ch.GoName }}Address({{ range $i, $p := $ch.Params }}{{ if $i }}, {{ end }}{{ $p.Name }} string{{ end }}) (string, error) {
+	{{- range $p := $ch.Params }}
+	{{- if $p.Enum }}
+	switch {{ $p.Name }} {
+	case {{ range $i, $e := $p.Enum }}{{ if $i }}, {{ end }}{{ $e | quote }}{{ end }}:
+	default:
+		return "", fmt.Errorf("invalid {{ $p.Name }}: must be one of %q", {{ join $p.Enum ", " | quote }})
+	}
+	{{- else if $p.Default }}
+	if {{ $p.Name }} == "" {
+		{{ $p.Name }} = {{ $p.Default | quote }}
+	}
+	{{- end }}
+	{{- end }}
+	return fmt.Sprintf({{ $ch.Address | replaceParamsSprintf | quote }}{{ range $p := $ch.Params }}, {{ $p.Name }}{{ end }}), nil
+}
+{{- else }}
+// {{ $ch.GoName }}Address is the static address of the {{ $ch.Name | quote }} channel.
+const {{ $ch.GoName }}Address = {{ $ch.Address | quote }}
+{{- end }}
+{{- end -}}
+
+{{- define "cfg" }}
+
+{{ template "header" $ }}
+
+{{- range $ch := $.Channels }}
+{{ template "cfg/channel_builder" $ch }}
+{{- end }}
+
+{{- if $.Servers }}
+// ServerInfo describes a spec server entry.
+type ServerInfo struct {
+	Name            string
+	Host            string
+	Protocol        string
+	ProtocolVersion string
+}
+
+// Spec servers, from the AsyncAPI document.
+var Servers = []ServerInfo{
+{{- range $s := $.Servers }}
+	{
+		Name:            {{ $s.Name | quote }},
+		Host:            {{ $s.Host | quote }},
+		Protocol:        {{ $s.Protocol | quote }},
+		{{- if $s.ProtocolVersion }}
+		ProtocolVersion: {{ $s.ProtocolVersion | quote }},
+		{{- end }}
+	},
+{{- end }}
+}
+{{- end }}
+
+{{ end }}

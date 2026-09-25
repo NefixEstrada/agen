@@ -1,0 +1,14 @@
+{{- /*gotype: github.com/ogen-go/ogen/gen.TemplateConfig*/ -}}
+
+{{ define "schemas/body" }}
+{{- range $_, $s := $.Types }}
+	{{- template "schema/schema" $s }}
+{{- end }}
+{{- end }}
+
+{{ define "schemas" }}
+{{ template "header" $ }}
+
+{{ template "schemas/body" $ }}
+
+{{- end }}

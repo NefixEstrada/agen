@@ -1,0 +1,200 @@
+{{- /*gotype: github.com/NefixEstrada/agen/gen.TemplateConfig*/ -}}
+
+{{- define "msg/decode_single" -}}
+{{- $op := $.Op -}}
+{{- $m := $.Msg -}}
+func decode{{ $op.Name }}Message(raw broker.Incoming) (*{{ $m.Type.Name }}, error) {
+	msg := new({{ $m.Type.Name }})
+	{{- if $m.HasHeaders }}
+	{
+		hdrs := make(map[string]string, len(raw.HeaderNames()))
+		for _, name := range raw.HeaderNames() {
+			hdrs[name] = raw.Header(name)
+		}
+		d := jx.DecodeBytes(broker.HeadersToJSON(hdrs))
+		if err := msg.Headers.Decode(d); err != nil {
+			return nil, &agenerrors.DecodeMessageError{
+				Operation: {{ $op.OperationID | quote }},
+				Message:   {{ $m.SpecName | quote }},
+				Err:       err,
+			}
+		}
+	}
+	{{- end }}
+	{{- if $m.HasPayload }}
+	{
+		d := jx.DecodeBytes(raw.Body())
+		if err := msg.Payload.Decode(d); err != nil {
+			return nil, &agenerrors.DecodeMessageError{
+				Operation: {{ $op.OperationID | quote }},
+				Message:   {{ $m.SpecName | quote }},
+				Err:       err,
+			}
+		}
+	}
+	{{- end }}
+	{{- if $.NeedsValidation }}
+	if err := msg.Validate(); err != nil {
+		return nil, &agenerrors.ValidateMessageError{
+			Operation: {{ $op.OperationID | quote }},
+			Message:   {{ $m.SpecName | quote }},
+			Err:       err,
+		}
+	}
+	{{- end }}
+	return msg, nil
+}
+{{- end -}}
+
+{{- define "msg/decode_variant" -}}
+{{- $op := $.Op -}}
+{{- $m := $.Msg -}}
+func {{ $.DecodeFn }}(raw broker.Incoming) (*{{ $m.Type.Name }}, error) {
+	msg := new({{ $m.Type.Name }})
+	{{- if $m.HasHeaders }}
+	{
+		hdrs := make(map[string]string, len(raw.HeaderNames()))
+		for _, name := range raw.HeaderNames() {
+			hdrs[name] = raw.Header(name)
+		}
+		d := jx.DecodeBytes(broker.HeadersToJSON(hdrs))
+		if err := msg.Headers.Decode(d); err != nil {
+			return nil, err
+		}
+	}
+	{{- end }}
+	{{- if $m.HasPayload }}
+	{
+		d := jx.DecodeBytes(raw.Body())
+		if err := msg.Payload.Decode(d); err != nil {
+			return nil, err
+		}
+	}
+	{{- end }}
+	{{- if $.NeedsValidation }}
+	if err := msg.Validate(); err != nil {
+		return nil, err
+	}
+	{{- end }}
+	return msg, nil
+}
+{{- end -}}
+
+{{- define "msg/decode_sum" -}}
+{{- $op := $ -}}
+func decode{{ $op.Name }}Message(raw broker.Incoming) ({{ $op.SumType.Name }}, error) {
+	{{- range $m := $op.Messages }}
+	{
+		msg, err := decode{{ $op.Name }}{{ $m.Name }}(raw)
+		if err == nil {
+			return msg, nil
+		}
+	}
+	{{- end }}
+	return nil, &agenerrors.NotDispatchedError{
+		Operation:   {{ $op.OperationID | quote }},
+		ContentType: raw.ContentType(),
+	}
+}
+{{- end -}}
+
+{{- define "msg/encode" -}}
+{{- $op := $.Op -}}
+{{- $m := $.Msg -}}
+func {{ $.EncodeFn }}(topic string, msg *{{ $m.Type.Name }}, opts ...PublishOption) (broker.Outgoing, error) {
+	{{- if $.NeedsValidation }}
+	if err := msg.Validate(); err != nil {
+		return broker.Outgoing{}, &agenerrors.ValidateMessageError{
+			Operation: {{ $op.OperationID | quote }},
+			Message:   {{ $m.SpecName | quote }},
+			Err:       err,
+		}
+	}
+	{{- end }}
+	cfg := newPublishConfig()
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	out := broker.Outgoing{
+		Topic:       topic,
+		Key:         cfg.key,
+		ContentType: {{ $m.ContentType | quote }},
+		Headers:     cfg.headers,
+	}
+	{{- if $m.HasHeaders }}
+	{
+		var e jx.Encoder
+		msg.Headers.Encode(&e)
+		hdrs, err := broker.JSONToHeaders(e.Bytes())
+		if err != nil {
+			return broker.Outgoing{}, &agenerrors.EncodeMessageError{
+				Operation: {{ $op.OperationID | quote }},
+				Message:   {{ $m.SpecName | quote }},
+				Err:       err,
+			}
+		}
+		if out.Headers == nil {
+			out.Headers = hdrs
+		} else {
+			for k, v := range hdrs {
+				out.Headers[k] = v
+			}
+		}
+	}
+	{{- end }}
+	{{- if $m.HasPayload }}
+	{
+		var e jx.Encoder
+		msg.Payload.Encode(&e)
+		out.Body = e.Bytes()
+	}
+	{{- end }}
+	return out, nil
+}
+{{- end -}}
+
+{{- define "msg/encode_sum" -}}
+func encode{{ $.Name }}Message(topic string, msg {{ $.SumType.Name }}, opts ...PublishOption) (broker.Outgoing, error) {
+	{{- range $m := $.Messages }}
+	if m, ok := msg.(*{{ $m.Type.Name }}); ok {
+		return encode{{ $.Name }}{{ $m.Name }}(topic, m, opts...)
+	}
+	{{- end }}
+	return broker.Outgoing{}, &agenerrors.NotDispatchedError{
+		Operation:   {{ $.OperationID | quote }},
+		ContentType: "",
+	}
+}
+{{- end -}}
+
+{{- define "msg" }}
+
+{{ template "header" $ }}
+
+{{- range $op := $.Operations }}
+{{- if and (gt (len $op.Messages) 1) (not $op.SumType) }}
+{{ errorf "operation %s has multiple messages but no sum type" $op.Name }}
+{{- end }}
+{{- if $op.IsReceive }}
+{{- if $op.SumType }}
+{{- range $m := $op.Messages }}
+{{ template "msg/decode_variant" (op_msg_variant $op $m) }}
+{{- end }}
+{{ template "msg/decode_sum" $op }}
+{{- else }}
+{{ template "msg/decode_single" (op_msg $op (index $op.Messages 0) ) }}
+{{- end }}
+{{- end }}
+{{- if $op.IsSend }}
+{{- if $op.SumType }}
+{{ template "msg/encode_sum" $op }}
+{{- range $m := $op.Messages }}
+{{ template "msg/encode" (op_msg_variant $op $m) }}
+{{- end }}
+{{- else }}
+{{ template "msg/encode" (op_msg $op (index $op.Messages 0) ) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{ end }}

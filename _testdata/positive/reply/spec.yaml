@@ -1,0 +1,39 @@
+asyncapi: 3.0.0
+info:
+  title: Rpc API
+  version: 1.0.0
+servers:
+  production:
+    host: redis.example.io:6379
+    protocol: redis
+channels:
+  requests:
+    address: rpc.requests
+    messages:
+      ping:
+        payload:
+          type: object
+          properties:
+            requestId:
+              type: string
+          required: [requestId]
+  responses:
+    address: rpc.responses
+    messages:
+      pong:
+        payload:
+          type: object
+          properties:
+            requestId:
+              type: string
+            ok:
+              type: boolean
+          required: [requestId, ok]
+operations:
+  receivePing:
+    action: receive
+    channel:
+      $ref: '#/channels/requests'
+    reply:
+      channel:
+        $ref: '#/channels/responses'

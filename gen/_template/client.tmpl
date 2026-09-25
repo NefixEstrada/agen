@@ -1,0 +1,83 @@
+{{- /*gotype: github.com/NefixEstrada/agen/gen.TemplateConfig*/ -}}
+
+{{- define "client/publish_config" }}
+// publishConfig carries options applied on top of a generated message.
+type publishConfig struct {
+	key     string
+	headers map[string]string
+}
+
+// PublishOption customizes a single publish.
+type PublishOption func(*publishConfig)
+
+func newPublishConfig() *publishConfig {
+	return &publishConfig{
+		headers: map[string]string{},
+	}
+}
+
+// WithKey sets the broker partition key of the published message.
+func WithKey(key string) PublishOption {
+	return func(c *publishConfig) {
+		c.key = key
+	}
+}
+
+// WithHeader sets an extra header on the published message.
+func WithHeader(k, v string) PublishOption {
+	return func(c *publishConfig) {
+		c.headers[k] = v
+	}
+}
+{{- end }}
+
+{{- define "client" }}
+
+{{ template "header" $ }}
+
+{{ template "client/publish_config" $ }}
+
+// Client publishes messages of the application's `send` operations to a
+// broker via a runtime Publisher.
+type Client struct {
+	publisher broker.Publisher
+}
+
+// NewClient creates a Client publishing with the given Publisher.
+func NewClient(publisher broker.Publisher) *Client {
+	return &Client{
+		publisher: publisher,
+	}
+}
+
+// Close closes the underlying publisher.
+func (c *Client) Close(ctx context.Context) error {
+	return c.publisher.Close(ctx)
+}
+
+{{- range $op := $.SendOperations }}
+
+{{- range $line := $op.GoDoc }}
+// {{ $line }}
+{{- end }}
+{{- if not $op.GoDoc }}
+// {{ $op.Name }} publishes a message of the {{ $op.OperationID | quote }} operation.
+{{- end }}
+func (c *Client) {{ $op.Name }}(ctx context.Context{{ range $p := $op.Channel.Params }}, {{ $p.Name }} string{{ end }}, msg {{ $op.ArgGo }}, opts ...PublishOption) error {
+{{- if $op.Channel.HasParams }}
+	topic, err := Build{{ $op.Channel.GoName }}Address({{ range $p := $op.Channel.Params }}{{ $p.Name }}, {{ end }})
+	if err != nil {
+		return err
+	}
+{{- else }}
+	topic := {{ $op.Channel.GoName }}Address
+{{- end }}
+	out, err := encode{{ $op.Name }}Message(topic, msg, opts...)
+	if err != nil {
+		return err
+	}
+	return c.publisher.Publish(ctx, out)
+}
+{{- end }}
+
+{{ end }}

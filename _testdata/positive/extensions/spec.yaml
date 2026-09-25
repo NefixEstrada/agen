@@ -1,0 +1,32 @@
+asyncapi: 3.0.0
+info:
+  title: Extensions API
+  version: 1.0.0
+servers:
+  production:
+    host: redis.example.io:6379
+    protocol: redis
+channels:
+  telemetry:
+    address: telemetry.{deviceId}
+    parameters:
+      deviceId:
+        description: The device identifier.
+    messages:
+      reading:
+        x-agen-name: DeviceReading
+        payload:
+          type: object
+          properties:
+            deviceId:
+              type: string
+            measuredAt:
+              type: string
+              format: date-time
+              x-agen-time-format: unix
+          required: [deviceId, measuredAt]
+operations:
+  receiveTelemetry:
+    action: receive
+    channel:
+      $ref: '#/channels/telemetry'

@@ -1,0 +1,94 @@
+{{- /*gotype: github.com/NefixEstrada/agen/gen.TemplateConfig*/ -}}
+
+{{- define "subscriber" }}
+
+{{ template "header" $ }}
+
+// Subscriber dispatches raw incoming messages to typed handlers: decode,
+// validate, dispatch. It implements broker.Dispatcher.
+type Subscriber struct {
+	handlers *SubscriberHandlers
+	dispatch broker.Handler
+}
+
+// NewSubscriber creates a Subscriber, wrapping the dispatch chain with the
+// given middlewares (applied left to right: the first middleware is the
+// outermost).
+func NewSubscriber(handlers *SubscriberHandlers, middleware ...broker.Middleware) *Subscriber {
+	s := &Subscriber{
+		handlers: handlers,
+		dispatch: nil,
+	}
+	s.dispatch = broker.Chain(middleware...)(s.dispatchMessage)
+	return s
+}
+
+// Handlers returns the subscriber handlers.
+func (s *Subscriber) Handlers() *SubscriberHandlers {
+	return s.handlers
+}
+
+// Dispatch implements broker.Dispatcher: it decodes the raw message for the
+// matching receive operation, validates it and calls the typed handler.
+//
+// The raw topic is matched against static channel addresses first; operations
+// on parameterized channels (or with multiple messages) are tried in order.
+func (s *Subscriber) Dispatch(ctx context.Context, raw broker.Incoming) error {
+	return s.dispatch(ctx, raw)
+}
+
+func (s *Subscriber) dispatchMessage(ctx context.Context, raw broker.Incoming) error {
+	switch {
+	{{- range $op := $.ReceiveOperations }}
+	{{- if not $op.Channel.HasParams }}
+	case raw.Topic() == {{ $op.Channel.GoName }}Address:
+		return s.dispatch{{ $op.Name }}(ctx, raw)
+	{{- end }}
+	{{- end }}
+	default:
+	{{- range $op := $.ReceiveOperations }}
+		{
+			err := s.dispatch{{ $op.Name }}(ctx, raw)
+			if !errors.Is(err, errSkipOperation) {
+				return err
+			}
+		}
+	{{- end }}
+		return &agenerrors.NotDispatchedError{
+			Operation:   "",
+			ContentType: raw.ContentType(),
+		}
+	}
+}
+
+{{- range $op := $.ReceiveOperations }}
+
+func (s *Subscriber) dispatch{{ $op.Name }}(ctx context.Context, raw broker.Incoming) error {
+	msg, err := decode{{ $op.Name }}Message(raw)
+	if err != nil {
+		var notDispatched *agenerrors.NotDispatchedError
+		if errors.As(err, &notDispatched) {
+			return errSkipOperation
+		}
+		return err
+	}
+	if err := s.handlers.{{ $op.Name }}.{{ $op.Name }}(ctx, msg); err != nil {
+		{{- if eq (len $op.Messages) 1 }}
+		return err
+		{{- else }}
+		var notDispatched *agenerrors.NotDispatchedError
+		if errors.As(err, &notDispatched) {
+			return errSkipOperation
+		}
+		return err
+		{{- end }}
+	}
+	return raw.Ack()
+}
+{{- end }}
+
+// errSkipOperation signals that a message did not match an operation; used
+// internally when routing by trial decode.
+var errSkipOperation = errors.New("skip operation")
+
+{{ end }}
