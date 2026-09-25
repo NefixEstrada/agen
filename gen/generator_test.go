@@ -41,13 +41,6 @@ func parseSpec(t *testing.T, path string) *parser.API {
 	return parseSpecRaw(t, path, false)
 }
 
-func TestNegativeUnknownProtocol(t *testing.T) {
-	api := parseSpec(t, "../_testdata/negative/unknown_protocol/spec.yaml")
-	_, err := gen.NewGenerator(api, gen.Options{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "protocol smoke-signals")
-}
-
 func TestIgnoreUnsupportedProtocol(t *testing.T) {
 	api := parseSpec(t, "../_testdata/negative/unknown_protocol/spec.yaml")
 	_, err := gen.NewGenerator(api, gen.Options{

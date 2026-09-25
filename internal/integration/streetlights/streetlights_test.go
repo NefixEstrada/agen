@@ -114,6 +114,59 @@ func TestPublish(t *testing.T) {
 	require.Equal(t, "on", body.Command)
 }
 
+func TestMiddlewareChain(t *testing.T) {
+	var order []string
+	h := handlerFunc(func(ctx context.Context, msg *streetlights.LightMeasured) error {
+		order = append(order, "handler")
+		return nil
+	})
+	mw := func(name string) broker.Middleware {
+		return func(next broker.Handler) broker.Handler {
+			return func(ctx context.Context, raw broker.Incoming) error {
+				order = append(order, name)
+				return next(ctx, raw)
+			}
+		}
+	}
+	sub := streetlights.NewSubscriber(streetlights.NewSubscriberHandlers(h), mw("first"), mw("second"))
+
+	raw := &testIncoming{
+		topic: "streetlights.2.light",
+		body:  []byte(`{"lumens":42}`),
+	}
+	require.NoError(t, sub.Dispatch(context.Background(), raw))
+
+	// Middlewares apply left to right (the first is the outermost), then the
+	// typed handler runs and the message is acked.
+	require.Equal(t, []string{"first", "second", "handler"}, order)
+	require.True(t, raw.acked)
+}
+
+func TestMiddlewareSeesHandlerError(t *testing.T) {
+	errBoom := errors.New("boom")
+	h := handlerFunc(func(ctx context.Context, msg *streetlights.LightMeasured) error {
+		return errBoom
+	})
+	var seen error
+	mw := func(next broker.Handler) broker.Handler {
+		return func(ctx context.Context, raw broker.Incoming) error {
+			err := next(ctx, raw)
+			seen = err
+			return err
+		}
+	}
+	sub := streetlights.NewSubscriber(streetlights.NewSubscriberHandlers(h), mw)
+
+	raw := &testIncoming{
+		topic: "streetlights.2.light",
+		body:  []byte(`{"lumens":42}`),
+	}
+	err := sub.Dispatch(context.Background(), raw)
+	require.ErrorIs(t, err, errBoom)
+	require.ErrorIs(t, seen, errBoom)
+	require.False(t, raw.acked)
+}
+
 type handlerFunc func(ctx context.Context, msg *streetlights.LightMeasured) error
 
 func (f handlerFunc) ReceiveLightMeasurement(ctx context.Context, msg *streetlights.LightMeasured) error {

@@ -1,0 +1,9 @@
+target:
+  spec: ./spec.yaml
+  dir: .
+  package_name: streetlightssub
+parser:
+  infer_types: true
+generator:
+  features:
+    disable: [publisher]

@@ -1,0 +1,58 @@
+asyncapi: 3.0.0
+info:
+  title: Streetlights
+  version: 1.0.0
+servers:
+  production:
+    host: redis.example.io:6379
+    protocol: redis
+channels:
+  lightMeasured:
+    address: 'streetlights.{streetlightId}.light'
+    parameters:
+      streetlightId:
+        description: The ID of the streetlight.
+        enum: ['1','2','3']
+    messages:
+      lightMeasured:
+        payload:
+          $ref: '#/components/schemas/lightMeasuredPayload'
+        headers:
+          $ref: '#/components/schemas/lightMeasuredHeaders'
+        contentType: application/json
+  lightCommand:
+    address: 'streetlights.command'
+    messages:
+      lightCommand:
+        payload:
+          $ref: '#/components/schemas/lightCommandPayload'
+operations:
+  receiveLightMeasurement:
+    action: receive
+    channel:
+      $ref: '#/channels/lightMeasured'
+  sendLightCommand:
+    action: send
+    channel:
+      $ref: '#/channels/lightCommand'
+components:
+  schemas:
+    lightMeasuredPayload:
+      type: object
+      properties:
+        lumens:
+          type: integer
+        sentAt:
+          type: string
+          format: date-time
+    lightMeasuredHeaders:
+      type: object
+      properties:
+        requestId:
+          type: string
+    lightCommandPayload:
+      type: object
+      properties:
+        command:
+          type: string
+          enum: ["on", "off"]
