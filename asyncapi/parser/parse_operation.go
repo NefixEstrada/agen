@@ -68,6 +68,17 @@ func (p *parser) parseOperation(api *API, name string, op *asyncapi.Operation, c
 	}
 	semantic.Channel = ch
 
+	// Typed redis operation binding (`bindings.redis` or `x-redis`), after
+	// the trait merge and the channel link: consumerGroup is constrained to
+	// receive operations on stream channels.
+	semantic.Redis, err = p.parseRedisOperationBinding(semantic.Bindings, semantic.Common.Extensions, file, op.Common.Locator)
+	if err != nil {
+		return err
+	}
+	if err := p.validateRedisOperationBinding(semantic, file, op.Common.Locator); err != nil {
+		return err
+	}
+
 	// Operation-level messages win over channel-level messages.
 	switch {
 	case len(op.Messages) > 0:
@@ -239,6 +250,14 @@ func (p *parser) parseChannel(name string, raw *asyncapi.Channel, ctx *jsonpoint
 	if err := p.mergeChannelTraits(semantic, raw, ctx); err != nil {
 		return nil, p.wrapField("traits", file, raw.Common.Locator, err)
 	}
+
+	// Typed redis channel binding (`bindings.redis` or `x-redis`), after the
+	// trait merge so trait-declared bindings are honored.
+	redis, err := p.parseRedisChannelBinding(semantic.Bindings, raw.Common.Extensions, file, raw.Common.Locator)
+	if err != nil {
+		return nil, err
+	}
+	semantic.Redis = redis
 
 	// Resolve parameters.
 	semantic.Parameters = map[string]*Parameter{}

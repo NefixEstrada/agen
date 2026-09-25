@@ -28,7 +28,8 @@ Implemented (matching DESIGN.md milestones M0–M2):
   and behavior-tested, including Redis round-trips against miniredis.
 
 Also implemented: [specification extensions](docs/extensions.md) (`x-agen-*`, mirroring ogen's
-`x-ogen-*` family: custom names, fields, types, time formats and pluggable validators), the
+`x-ogen-*` family: custom names, fields, types, time formats and pluggable validators; plus
+`x-redis`, the draft redis binding 0.2.0 fields while the binding is unpublished), the
 `generator.initialisms` naming option, `expand.output` (fully-dereferenced spec dump; internal
 `$ref`s are inlined, external/recursive ones kept), and `operation.reply` support (the reply of a
 receive operation is generated as a typed publish surface: `client.<Operation>Reply(...)` on the
@@ -37,7 +38,8 @@ reply channel; automatic reply dispatch and correlationId plumbing are future wo
 Not yet implemented (see DESIGN.md roadmap): Kafka/MQTT/AMQP/NATS/WS backends (codegen is already
 protocol-agnostic; Redis is the only runtime for now), Avro payloads, OTel instrumentation, official
 meta-schema validation (structural validation is enforced at parse time instead, ogen-style), the optional
-Modelina backend and `x-agen-redis` conventions beyond `ConsumerConfig`/`PublisherConfig`.
+Modelina backend, per-channel redis wiring (mixed `maxLen`/`consumerGroup` declarations and groupless
+`XREAD` reads).
 
 ## Install
 
@@ -71,8 +73,6 @@ generator:
   filters:
     operations_regex: ""          # generate a subset
     actions: []                   # send | receive
-broker:
-  redis: { mode: streams }        # streams | pubsub
 expand:
   output: ""                      # optional fully-dereferenced spec dump (YAML)
 ```
@@ -83,22 +83,21 @@ Relative paths in the config resolve against the config file directory.
 
 ogen-style: the generated package wires the broker runtime internally — user
 code never imports `agen/runtime` (specs whose servers use a protocol without
-a runtime backend yet, e.g. kafka, fall back to `WithPublisher`).
+a runtime backend yet, e.g. kafka, fall back to `WithPublisher`). The Redis
+mapping comes from the spec (`x-redis`: channel `type`, receive operations'
+`consumerGroup`) and is baked into the constructors — there are no mode or
+group options to get wrong.
 
 ```go
 // Server: consumes the spec's `receive` operations.
 srv, err := streetlights.NewServer(myHandler,
 	streetlights.WithAddr("redis.example.io:6379"), // default: first spec server
-	streetlights.WithGroup("streetlights-app"),     // consumer group (streams mode)
-	streetlights.WithMode(streetlights.ModeStreams),
 )
 go func() { _ = srv.Run(ctx) }() // → decode → validate → typed handler; XACK on success
 <-srv.Ready()
 
 // Client: publishes the spec's `send` operations.
-client, err := streetlights.NewClient("redis.example.io:6379",
-	streetlights.WithMode(streetlights.ModeStreams),
-)
+client, err := streetlights.NewClient("redis.example.io:6379")
 err = client.SendLightCommand(ctx, &streetlights.LightCommand{…})
 // parameterized channels: client.SendOrderEvents(ctx, "acme", msg)
 

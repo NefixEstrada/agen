@@ -1,0 +1,25 @@
+# The pubsub half of the redis 0.2.0 binding README example, declared via the
+# x-redis specification extension: every channel declares type pubsub, so the
+# generated constructors run in pub/sub mode and WithMode is not generated.
+asyncapi: 3.0.0
+info:
+  title: Redis PubSub Binding API
+  version: 1.0.0
+servers:
+  production:
+    host: redis.example.io:6379
+    protocol: redis
+channels:
+  notifications:
+    address: app:notifications
+    x-redis: { type: pubsub, bindingVersion: '0.2.0' }
+    messages:
+      note:
+        payload: { type: string }
+operations:
+  publishNote:
+    action: send
+    channel: { $ref: '#/channels/notifications' }
+  consumeNote:
+    action: receive
+    channel: { $ref: '#/channels/notifications' }

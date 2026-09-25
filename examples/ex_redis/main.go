@@ -4,13 +4,13 @@
 // Redis runtime internally — user code never imports agen/runtime, exactly
 // like ogen's generated HTTP server/client.
 //
+// The spec declares the Redis mapping via the x-redis extension (channels
+// type stream, receive operations' consumerGroup): the generated code bakes
+// it in and exposes no mode or group options.
+//
 // Start a Redis server (e.g. docker run -p 6379:6379 redis) and run:
 //
 //	go run ./examples/ex_redis
-//
-// In streams mode (default) messages go through a consumer group (XADD →
-// XREADGROUP → XACK). With -mode pubsub they use Redis Pub/Sub instead
-// (fire-and-forget, no groups).
 package main
 
 import (
@@ -28,28 +28,25 @@ import (
 func main() {
 	var (
 		addr = flag.String("addr", "localhost:6379", "Redis address")
-		mode = flag.String("mode", "streams", "streams or pubsub")
 		n    = flag.Int("n", 3, "number of commands to publish")
 	)
 	flag.Parse()
 
-	if err := run(*addr, demo.Mode(*mode), *n); err != nil {
+	if err := run(*addr, *n); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "error: %+v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(addr string, mode demo.Mode, n int) error {
+func run(addr string, n int) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	// Server: the generated constructor wires the Redis consumer for the
-	// spec's receive operations.
+	// spec's receive operations — stream and group come from x-redis.
 	got := make(chan *demo.LightCommand, n)
 	srv, err := demo.NewServer(demoHandler{got: got},
 		demo.WithAddr(addr),
-		demo.WithGroup("demo-app"),
-		demo.WithMode(mode),
 	)
 	if err != nil {
 		return err
@@ -58,8 +55,7 @@ func run(addr string, mode demo.Mode, n int) error {
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- srv.Run(ctx) }()
 
-	// Wait for the subscription/group to be established: publishing earlier
-	// can lose messages in pubsub mode.
+	// Wait for the group to be established before publishing.
 	select {
 	case <-srv.Ready():
 	case <-time.After(5 * time.Second):
@@ -67,12 +63,12 @@ func run(addr string, mode demo.Mode, n int) error {
 	}
 
 	// Client: the generated constructor wires the Redis publisher.
-	client, err := demo.NewClient(addr, demo.WithMode(mode))
+	client, err := demo.NewClient(addr)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("publishing %d light commands to %s (mode=%s)\n", n, demo.LightCommandAddress, mode)
+	fmt.Printf("publishing %d light commands to %s\n", n, demo.LightCommandAddress)
 	for i := 0; i < n; i++ {
 		command := demo.LightCommandPayloadCommandOn
 		if i%2 == 1 {

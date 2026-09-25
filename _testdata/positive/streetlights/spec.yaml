@@ -9,6 +9,7 @@ servers:
 channels:
   lightMeasured:
     address: 'streetlights.{streetlightId}.light'
+    x-redis: { type: stream }
     parameters:
       streetlightId:
         description: The ID of the streetlight.
@@ -22,6 +23,7 @@ channels:
         contentType: application/json
   lightCommand:
     address: 'streetlights.command'
+    x-redis: { type: stream }
     messages:
       lightCommand:
         payload:
@@ -29,6 +31,7 @@ channels:
 operations:
   receiveLightMeasurement:
     action: receive
+    x-redis: { consumerGroup: streetlights-app }
     channel:
       $ref: '#/channels/lightMeasured'
   sendLightCommand:

@@ -1,0 +1,13 @@
+asyncapi: 3.0.0
+info: { title: T, version: 1.0.0 }
+channels:
+  c:
+    address: c
+    x-redis: { type: stream }
+    messages:
+      m: { payload: { type: string } }
+operations:
+  op:
+    action: send
+    channel: { $ref: '#/channels/c' }
+    x-redis: { consumerGroup: my-service }

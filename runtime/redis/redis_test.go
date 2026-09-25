@@ -195,3 +195,38 @@ func (f lightHandlerFn) ReceiveLightMeasurement(ctx context.Context, msg *street
 }
 
 func lightHandler(f lightHandlerFn) streetlights.ReceiveLightMeasurementHandler { return f }
+
+// TestPublisherMaxLenTrims covers the redis 0.2.0 channel binding `maxLen`:
+// the publisher XADDs with an exact MAXLEN, keeping the stream at that length.
+func TestPublisherMaxLenTrims(t *testing.T) {
+	client := setupRedis(t)
+
+	pub, err := redisruntime.NewPublisher(redisruntime.PublisherConfig{
+		Client: client,
+		MaxLen: 3,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	for i := 0; i < 5; i++ {
+		require.NoError(t, pub.Publish(ctx, broker.Outgoing{
+			Topic:       "app:events",
+			ContentType: "application/json",
+			Body:        []byte(`{"id":"e"}`),
+		}))
+	}
+	require.Equal(t, int64(3), client.XLen(ctx, "app:events").Val())
+}
+
+// TestPublisherMaxLenRequiresStreams asserts the binding constraint at the
+// runtime boundary: maxLen trims streams, it cannot apply to pub/sub.
+func TestPublisherMaxLenRequiresStreams(t *testing.T) {
+	client := setupRedis(t)
+
+	_, err := redisruntime.NewPublisher(redisruntime.PublisherConfig{
+		Client: client,
+		Mode:   redisruntime.ModePubSub,
+		MaxLen: 3,
+	})
+	require.ErrorContains(t, err, "maxLen requires streams mode")
+}

@@ -1,0 +1,12 @@
+asyncapi: 3.0.0
+info: { title: T, version: 1.0.0 }
+servers: { production: { host: redis.example.io:6379, protocol: redis } }
+channels:
+  events:
+    address: app:events
+    x-redis: { type: stream }
+    messages: { event: { payload: { type: string } } }
+operations:
+  consumeEvent:
+    action: receive
+    channel: { $ref: '#/channels/events' }

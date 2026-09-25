@@ -1,0 +1,1 @@
+x-redis.maxLen must not be present when type is "pubsub"

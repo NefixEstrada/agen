@@ -51,6 +51,18 @@ type TemplateConfig struct {
 	// no servers.
 	BrokerProtocol string
 
+	// RedisMode is the mapping mode declared by x-redis ("stream" or
+	// "pubsub"); empty when no channel declares one. A declared mode is
+	// fixed: WithMode is not generated.
+	RedisMode string
+	// RedisGroup is the consumer group declared by x-redis, empty when no
+	// receive operation declares one. A declared group is fixed: WithGroup
+	// is not generated.
+	RedisGroup string
+	// RedisMaxLen is the exact XADD MAXLEN declared by x-redis on the send
+	// channels; 0 trims nothing.
+	RedisMaxLen int64
+
 	// RuntimeImport is the base import path of the agen runtime.
 	RuntimeImport string
 }
@@ -276,6 +288,10 @@ func (g *Generator) WriteSource(fs FileSystem, pkgName string) error {
 
 		BrokerWired:    wired,
 		BrokerProtocol: protocol,
+
+		RedisMode:   g.redisMode,
+		RedisGroup:  g.redisGroup,
+		RedisMaxLen: g.redisMaxLen,
 
 		RuntimeImport: "github.com/NefixEstrada/agen/runtime",
 	}

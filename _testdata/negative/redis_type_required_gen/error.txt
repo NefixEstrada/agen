@@ -1,0 +1,1 @@
+channel "events": x-redis.type is required (stream or pubsub)

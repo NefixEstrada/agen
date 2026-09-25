@@ -129,6 +129,12 @@ type Generator struct {
 	seenNames     map[string]struct{}
 	refNames      map[string]string // schema ref ptr -> type name
 	refNameUsed   map[string]struct{}
+
+	// Redis binding defaults for the generated constructors (the draft redis
+	// binding 0.2.0 fields, read from the `x-redis` extension).
+	redisMode   string // "stream" or "pubsub" declared by the channels
+	redisGroup  string // consumerGroup declared by the receive operations
+	redisMaxLen int64  // maxLen declared by the send channels
 }
 
 // NewGenerator parses the API model into IR.
@@ -363,6 +369,30 @@ func (g *Generator) build(api *parser.API) error {
 		g.operations = append(g.operations, irOp)
 	}
 
+	// Derive the redis wiring declared by the x-redis extensions (draft
+	// binding 0.2.0). The spec is the single source of truth: every channel
+	// must declare its type and every streams-mode receive operation its
+	// consumerGroup — the generated code exposes no mode or group options,
+	// so an undeclared value is an error, never a silent default.
+	if wired, protocol := brokerBackend(g.servers); wired {
+		effective := append(append([]*parser.Operation{}, ops...), synthetic...)
+		mode, group, maxLen, err := redisBindingDefaults(effective)
+		if err != nil {
+			return errors.Wrap(err, "redis extensions")
+		}
+		g.redisMode, g.redisGroup, g.redisMaxLen = mode, group, maxLen
+	} else if protocol != "" {
+		for _, op := range ops {
+			if op.Redis != nil || (op.Channel != nil && op.Channel.Redis != nil) {
+				g.log.Warn("ignoring x-redis extensions: servers use a different protocol",
+					zap.String("protocol", protocol),
+					zap.String("operation", op.Name),
+				)
+				break
+			}
+		}
+	}
+
 	g.tstorage = g.engine.Types()
 
 	// Collect types that need Equal() and Hash() methods for complex uniqueItems validation
@@ -439,6 +469,66 @@ func (g *Generator) buildOperation(op *parser.Operation, seenChannels map[*parse
 	}
 
 	return irOp, nil
+}
+
+// redisBindingDefaults derives the redis wiring declared by the x-redis
+// extensions of the effective operations: the channel `type` selects the
+// mapping mode, receive operations' `consumerGroup` the server group and the
+// send channels' `maxLen` the stream trim length.
+//
+// The spec is the single source of truth — the generated code exposes no
+// mode or group options — so every channel must declare its type and every
+// streams-mode receive operation its consumerGroup: an undeclared value is an
+// error, not a default. The runtime wires a single consumer and publisher per
+// service, so declarations that disagree are errors too.
+func redisBindingDefaults(ops []*parser.Operation) (mode, group string, maxLen int64, err error) {
+	for _, op := range ops {
+		ch := op.Channel
+		if ch == nil {
+			continue
+		}
+		if ch.Redis == nil {
+			return "", "", 0, errors.Errorf("channel %q: x-redis.type is required (stream or pubsub)", ch.Name)
+		}
+		if mode == "" {
+			mode = ch.Redis.Type
+		} else if mode != ch.Redis.Type {
+			return "", "", 0, errors.Errorf(
+				"channel %q declares redis type %q but %q was declared elsewhere: mixing stream and pubsub channels needs separate services",
+				ch.Name, ch.Redis.Type, mode,
+			)
+		}
+		switch op.Action {
+		case parser.ReceiveAction:
+			if op.Redis == nil || op.Redis.ConsumerGroup == "" {
+				if mode == parser.RedisTypeStream {
+					return "", "", 0, errors.Errorf("operation %q: x-redis.consumerGroup is required in streams mode", op.Name)
+				}
+				break // pubsub receives need no group
+			}
+			if group == "" {
+				group = op.Redis.ConsumerGroup
+			} else if group != op.Redis.ConsumerGroup {
+				return "", "", 0, errors.Errorf(
+					"operation %q declares redis consumerGroup %q but %q was declared elsewhere: per-operation groups need separate services",
+					op.Name, op.Redis.ConsumerGroup, group,
+				)
+			}
+		case parser.SendAction:
+			if ch.Redis.MaxLen == 0 {
+				break
+			}
+			if maxLen == 0 {
+				maxLen = ch.Redis.MaxLen
+			} else if maxLen != ch.Redis.MaxLen {
+				return "", "", 0, errors.Errorf(
+					"channel %q declares redis maxLen %d but %d was declared elsewhere: per-channel maxLen is not supported yet",
+					ch.Name, ch.Redis.MaxLen, maxLen,
+				)
+			}
+		}
+	}
+	return mode, group, maxLen, nil
 }
 
 func prettyDescription(op *parser.Operation) []string {

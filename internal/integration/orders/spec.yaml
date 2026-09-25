@@ -10,6 +10,7 @@ defaultContentType: application/json
 channels:
   orderEvents:
     address: orders.events.{tenantId}
+    x-redis: { type: stream }
     parameters:
       tenantId:
         description: The tenant identifier.
@@ -37,6 +38,7 @@ channels:
 operations:
   receiveOrderEvents:
     action: receive
+    x-redis: { consumerGroup: orders-app }
     channel:
       $ref: '#/channels/orderEvents'
   sendOrderEvents:

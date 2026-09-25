@@ -13,6 +13,7 @@ defaultContentType: application/json
 channels:
   telemetry:
     address: telemetry.readings
+    x-redis: { type: stream }
     messages:
       readings:
         payload:
@@ -42,5 +43,6 @@ operations:
       $ref: '#/channels/telemetry'
   receiveReadings:
     action: receive
+    x-redis: { consumerGroup: telemetry-app }
     channel:
       $ref: '#/channels/telemetry'

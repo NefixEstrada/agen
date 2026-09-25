@@ -31,7 +31,6 @@ generator:
 	require.NoError(t, err)
 	require.Equal(t, "myapi", cfg.Target.PackageName)
 	require.Equal(t, []string{"schema.not"}, cfg.Parser.IgnoreUnsupported)
-	require.Equal(t, "streams", cfg.Broker.RedisMode())
 
 	// Relative paths resolve against the config file directory.
 	require.Equal(t, filepath.Join(dir, "spec.yaml"), cfg.Target.Spec)

@@ -9,6 +9,7 @@ servers:
 channels:
   telemetry:
     address: telemetry.{deviceId}
+    x-redis: { type: stream }
     parameters:
       deviceId:
         description: The device identifier.
@@ -30,6 +31,7 @@ channels:
           required: [deviceId, measuredAt, seenAt]
   users:
     address: users
+    x-redis: { type: stream }
     messages:
       created:
         payload:
@@ -49,9 +51,11 @@ channels:
 operations:
   receiveTelemetry:
     action: receive
+    x-redis: { consumerGroup: extensions-app }
     channel:
       $ref: '#/channels/telemetry'
   userCreated:
     action: receive
+    x-redis: { consumerGroup: extensions-app }
     channel:
       $ref: '#/channels/users'

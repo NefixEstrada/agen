@@ -21,6 +21,7 @@ Supported extensions:
 - [Custom type](#custom-type) — `x-agen-type`
 - [Time formats](#time-formats) — `x-agen-time-format`
 - [Custom validators](#custom-validators) — `x-agen-validate`
+- [Redis bindings](#redis-bindings-x-redis) — `x-redis`
 
 The snippets below assume this document skeleton (elided everywhere else):
 
@@ -306,8 +307,67 @@ An unregistered validator name fails validation at runtime with a `validate.Vali
 > also forwards the payload through the same validator (`validate.Ogen`), so it runs twice per
 > decoded message — a quirk inherited from ogen's validators template.
 
+## Redis bindings (`x-redis`)
+
+The redis binding 0.2.0 draft ([asyncapi/bindings#313](https://github.com/asyncapi/bindings/pull/313))
+defines the fields agen maps onto its Redis runtime: channel `type` and `maxLen`, operation
+`consumerGroup`; server and message binding objects stay reserved. That version is **not published
+yet**, so agen does not read `bindings.redis` — the fields are declared as the `x-redis`
+specification extension on the channel or operation object instead:
+
+```yaml
+channels:
+  events:
+    address: 'app:events'
+    x-redis: { type: stream, maxLen: 1, bindingVersion: '0.2.0' }
+  notifications:
+    address: 'app:notifications'
+    x-redis: { type: pubsub, bindingVersion: '0.2.0' }
+```
+
+```yaml
+operations:
+  consumeEvent:
+    action: receive
+    channel:
+      $ref: '#/channels/events'
+    x-redis: { consumerGroup: my-service, bindingVersion: '0.2.0' }
+```
+
+(The values are the binding README's own example, its fields moved under `x-redis`;
+`bindingVersion` is optional inside the extension and accepts `0.2.0`.)
+
+Writing the draft fields under `bindings.redis` is a located parse error pointing at `x-redis`;
+a fieldless `bindings.redis` — the published 0.1.0 stub, where every object was reserved — stays
+valid and is ignored. When the binding is published, agen will read `bindings.redis` directly and
+`x-redis` becomes a compatibility alias.
+
+> **Note:** the example document above mixes `stream` and `pubsub` channels, which agen cannot
+> generate yet — the runtime wires a single consumer and publisher per service, so a document must
+> declare one type only (split it into two services, one per type, as `_testdata/positive/redis_binding`
+> and `_testdata/positive/redis_pubsub` do).
+
+What each field does:
+
+- channel `type` — the Redis primitive of the channel. **Required on every channel** of a redis
+  spec: a channel without it is a located generation error, since agen guesses no default mapping.
+  All channels must agree: mixing `stream` and `pubsub` in one service is a located generation
+  error. The declared type is baked into the constructors (`pubsub` ⇒ pub/sub, `stream` ⇒ streams)
+  and the generated code exposes **no mode surface at all** — no `Mode` type, no constants, no
+  `WithMode` — so the mapping cannot be misconfigured away.
+- channel `maxLen` — the publisher XADDs with an exact `MAXLEN <maxLen>`, keeping the stream at
+  that many entries. It must be ≥ 1 and MUST NOT appear on `pubsub` channels; all send channels
+  must declare the same value (per-channel maxLen is future work).
+- operation `consumerGroup` — the consumer group of the generated server, used by `XREADGROUP`.
+  It is only valid on `receive` operations over `stream` channels, and **required** there: with
+  no `WithGroup` existing, an undeclared group is a located generation error, not a default.
+  `pubsub` receives need no group. The binding's groupless `XREAD` reading is not implemented.
+
+Violations (missing or invalid `type`, `maxLen` on pubsub, `consumerGroup` on a send operation or a
+pubsub channel, unknown fields, unsupported `bindingVersion`) are located parse errors.
+
 ## Planned extensions
 
-- `x-agen-redis` — Redis-specific conventions (e.g. consumer-group naming), see
-  `DESIGN.md` §6.5. Not yet implemented; `ConsumerConfig`/`PublisherConfig` cover the
-  current needs.
+- Per-channel redis wiring: mixed `maxLen` or `consumerGroup` declarations and groupless `XREAD`
+  reads need per-channel consumers/publishers in the generated code; today heterogeneous
+  declarations are generation errors and pub/sub receives need no group (see `DESIGN.md` §6.5).

@@ -77,6 +77,11 @@ type PublisherConfig struct {
 	Addr string
 	// Mode: streams (default) or pubsub.
 	Mode Mode
+	// MaxLen trims the stream to this many entries on every XADD, with an
+	// exact MAXLEN (the draft redis binding 0.2.0 channel `maxLen`, declared
+	// via the x-redis extension). Streams mode only; 0 (default) disables
+	// trimming.
+	MaxLen int64
 	// Security for the connection.
 	Security Security
 	// OnError is called on publish failures (optional).
@@ -90,6 +95,7 @@ type Publisher struct {
 	client redis.UniversalClient
 	own    bool
 	mode   Mode
+	maxLen int64
 	onErr  func(err error)
 }
 
@@ -98,6 +104,9 @@ func NewPublisher(cfg PublisherConfig) (*Publisher, error) {
 	mode, err := parseMode(cfg.Mode)
 	if err != nil {
 		return nil, err
+	}
+	if mode == ModePubSub && cfg.MaxLen > 0 {
+		return nil, errors.New("redis publisher: maxLen requires streams mode")
 	}
 	client := cfg.Client
 	own := false
@@ -112,6 +121,7 @@ func NewPublisher(cfg PublisherConfig) (*Publisher, error) {
 		client: client,
 		own:    own,
 		mode:   mode,
+		maxLen: cfg.MaxLen,
 		onErr:  cfg.OnError,
 	}, nil
 }
@@ -134,10 +144,15 @@ func (p *Publisher) Publish(ctx context.Context, out broker.Outgoing) error {
 	case ModePubSub:
 		err = p.client.Publish(ctx, out.Topic, encodePubSubEnvelope(out)).Err()
 	default:
-		err = p.client.XAdd(ctx, &redis.XAddArgs{
+		args := &redis.XAddArgs{
 			Stream: out.Topic,
 			Values: streamValues(out),
-		}).Err()
+		}
+		if p.maxLen > 0 {
+			// Exact MAXLEN, not the "~" approximation (binding 0.2.0).
+			args.MaxLen = p.maxLen
+		}
+		err = p.client.XAdd(ctx, args).Err()
 	}
 	if err != nil && p.onErr != nil {
 		p.onErr(err)
@@ -207,7 +222,8 @@ type ConsumerConfig struct {
 	// and glob patterns (pubsub mode). Required.
 	Addresses []string
 	// Group is the consumer group name (streams mode). Required in streams
-	// mode; corresponds to x-agen-redis.group.
+	// mode; the `x-redis` extension's consumerGroup (draft binding 0.2.0) is
+	// the spec-level source for it.
 	Group string
 	// Consumer name within the group (streams mode).
 	Consumer string

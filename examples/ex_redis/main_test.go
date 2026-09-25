@@ -27,7 +27,6 @@ func TestRedisDemoEndToEnd(t *testing.T) {
 	got := make(chan *demo.LightCommand, 1)
 	srv, err := demo.NewServer(demoHandler{got: got},
 		demo.WithAddr(mr.Addr()),
-		demo.WithGroup("demo-app"),
 	)
 	require.NoError(t, err)
 
@@ -57,9 +56,9 @@ func TestRedisDemoEndToEnd(t *testing.T) {
 		t.Fatal("no message received")
 	}
 
-	// Successful dispatch XACKs the stream entry.
+	// Successful dispatch XACKs the stream entry (group from x-redis).
 	require.Eventually(t, func() bool {
-		pending, err := admin.XPending(ctx, demo.LightCommandAddress, "demo-app").Result()
+		pending, err := admin.XPending(ctx, demo.LightCommandAddress, "streetlights-demo").Result()
 		return err == nil && pending.Count == 0
 	}, 3*time.Second, 50*time.Millisecond)
 

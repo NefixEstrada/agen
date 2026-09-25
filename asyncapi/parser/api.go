@@ -79,6 +79,9 @@ type Channel struct {
 	Servers []string
 	// Bindings are the channel bindings, keyed by protocol.
 	Bindings asyncapi.ChannelBindings
+	// Redis is the typed redis channel binding (from `bindings.redis` or the
+	// `x-redis` extension), nil when the channel declares none.
+	Redis *RedisChannelBinding
 	// Tags is a list of tags.
 	Tags asyncapi.Tags
 
@@ -130,6 +133,9 @@ type Operation struct {
 	Security []asyncapi.SecurityRequirement
 	// Bindings are the operation bindings, keyed by protocol.
 	Bindings asyncapi.OperationBindings
+	// Redis is the typed redis operation binding (from `bindings.redis` or
+	// the `x-redis` extension), nil when the operation declares none.
+	Redis *RedisOperationBinding
 	// Reply describes the operation reply, if any.
 	Reply *Reply
 	// Tags is a list of tags.

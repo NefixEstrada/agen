@@ -1,0 +1,1 @@
+operation "consumeEvent": x-redis.consumerGroup is required in streams mode

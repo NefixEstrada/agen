@@ -9,6 +9,7 @@ servers:
 channels:
   requests:
     address: rpc.requests
+    x-redis: { type: stream }
     messages:
       ping:
         payload:
@@ -19,6 +20,7 @@ channels:
           required: [requestId]
   responses:
     address: rpc.responses
+    x-redis: { type: stream }
     messages:
       pong:
         payload:
@@ -32,6 +34,7 @@ channels:
 operations:
   receivePing:
     action: receive
+    x-redis: { consumerGroup: rpc-app }
     channel:
       $ref: '#/channels/requests'
     reply:

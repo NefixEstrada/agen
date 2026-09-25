@@ -54,7 +54,12 @@ func NewClient(addr string, opts ...ClientOption) (*Client, error) {
 {{- if $.BrokerWired }}
 		p, err := redisruntime.NewPublisher(redisruntime.PublisherConfig{
 			Addr: addr,
-			Mode: cfg.Mode,
+{{- if eq $.RedisMode "pubsub" }}
+			Mode: redisruntime.ModePubSub,
+{{- end }}
+{{- if $.RedisMaxLen }}
+			MaxLen: {{ $.RedisMaxLen }},
+{{- end }}
 		})
 		if err != nil {
 			return nil, err

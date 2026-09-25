@@ -1,0 +1,1 @@
+x-redis.consumerGroup is only valid on receive operations

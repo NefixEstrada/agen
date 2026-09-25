@@ -15,6 +15,7 @@ defaultContentType: application/json
 channels:
   lightCommand:
     address: streetlights.command
+    x-redis: { type: stream }
     title: Light commands
     messages:
       lightCommand:
@@ -36,6 +37,7 @@ operations:
     summary: Publish a light command.
   receiveLightCommand:
     action: receive
+    x-redis: { consumerGroup: streetlights-demo }
     channel:
       $ref: '#/channels/lightCommand'
     summary: Receive light commands (demo consumer).

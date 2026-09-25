@@ -18,8 +18,6 @@ type Config struct {
 	Parser Parser `json:"parser" yaml:"parser"`
 	// Generator configures code generation.
 	Generator Generator `json:"generator" yaml:"generator"`
-	// Broker configures runtime backend defaults.
-	Broker Broker `json:"broker" yaml:"broker"`
 	// Expand optionally dumps the fully-dereferenced spec.
 	Expand Expand `json:"expand" yaml:"expand"`
 }
@@ -77,20 +75,6 @@ type Filters struct {
 	OperationsRegex string `json:"operations_regex" yaml:"operations_regex"`
 	// Actions keeps only the given actions: "send" and/or "receive".
 	Actions []string `json:"actions" yaml:"actions"`
-}
-
-// Broker configures runtime backends.
-type Broker struct {
-	// Redis configures the Redis backend defaults.
-	Redis *Redis `json:"redis" yaml:"redis"`
-}
-
-// Redis configures the Redis backend.
-type Redis struct {
-	// Module is the go-redis module path the generated code is used with.
-	Module string `json:"module" yaml:"module"`
-	// Mode is "streams" (default) or "pubsub".
-	Mode string `json:"mode" yaml:"mode"`
 }
 
 // Expand optionally dumps the fully-dereferenced spec.
@@ -159,23 +143,10 @@ func (c *Config) setDefaults() error {
 	if c.Target.Dir == "" {
 		c.Target.Dir = "./api"
 	}
-	switch c.Broker.RedisMode() {
-	case "", "streams", "pubsub":
-	default:
-		return errors.Errorf("broker.redis.mode: invalid value %q (streams or pubsub)", c.Broker.RedisMode())
-	}
 	for _, a := range c.Generator.Filters.Actions {
 		if a != "send" && a != "receive" {
 			return errors.Errorf("generator.filters.actions: invalid action %q (send or receive)", a)
 		}
 	}
 	return nil
-}
-
-// RedisMode returns the configured Redis mode, defaulting to streams.
-func (b Broker) RedisMode() string {
-	if b.Redis == nil || b.Redis.Mode == "" {
-		return "streams"
-	}
-	return b.Redis.Mode
 }
