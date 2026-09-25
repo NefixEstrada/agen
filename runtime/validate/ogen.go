@@ -101,3 +101,11 @@ func GetValidator(name string) (OgenValidator, bool) {
 func Ogen(name string, value, params any) error {
 	return defaultRegistry.Validate(name, value, params)
 }
+
+// ValidateWith validates using the default global registry, like Ogen.
+//
+// The generated validators call it for object-level pluggable validation,
+// passing the whole struct as the value; both helpers share one registry.
+func ValidateWith(name string, value, params any) error {
+	return defaultRegistry.Validate(name, value, params)
+}
