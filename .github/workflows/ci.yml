@@ -59,3 +59,27 @@ jobs:
             echo "generated code is stale; run: go generate ./internal/integration/..."
             exit 1
           }
+
+  examples:
+    name: Examples module
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Regenerate examples
+        working-directory: examples
+        run: |
+          go mod download github.com/NefixEstrada/agen
+          go generate ./...
+      - name: Check for diffs
+        working-directory: examples
+        run: |
+          git diff --exit-code -- . || {
+            echo "example code is stale; run: (cd examples && go generate ./...)"
+            exit 1
+          }
+      - name: Test
+        working-directory: examples
+        run: go test ./...

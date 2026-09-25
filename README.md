@@ -106,7 +106,12 @@ unique required fields or a schema-level `oneOf`/`discriminator` payload for una
 ```sh
 go test ./...                       # unit + integration (miniredis, no docker needed)
 go generate ./internal/integration/...  # regenerate committed packages after template changes
+(cd examples && go generate ./... && go test ./...)  # real public documents (drift check)
 ```
+
+`examples/` is a separate module with committed generated code for real public AsyncAPI documents (the
+canonical Streetlights Kafka spec plus official-converter outputs of 2.6 documents); see
+[examples/README.md](examples/README.md).
 
 See `DESIGN.md` for the full design document and `THIRD_PARTY.md` + the per-directory `UPSTREAM.md` files for
 the ogen vendoring manifest.
