@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/go-faster/errors"
+	"go.uber.org/zap"
 
 	"github.com/ogen-go/ogen/jsonpointer"
 	"github.com/ogen-go/ogen/location"
@@ -28,6 +29,13 @@ func (p *parser) parseOperations(api *API, ctx *jsonpointer.ResolveCtx) error {
 
 func (p *parser) parseOperation(api *API, name string, op *asyncapi.Operation, ctx *jsonpointer.ResolveCtx) error {
 	file := p.file(ctx)
+	if op.Ref != "" {
+		resolved, err := p.resolveOperationRef(op.Ref, ctx)
+		if err != nil {
+			return p.wrapField("$ref", file, op.Common.Locator, err)
+		}
+		op = resolved
+	}
 	if op.Action != string(SendAction) && op.Action != string(ReceiveAction) {
 		err := errors.Errorf("invalid action %q: must be %q or %q", op.Action, SendAction, ReceiveAction)
 		return p.wrapField("action", file, op.Common.Locator, err)
@@ -63,7 +71,7 @@ func (p *parser) parseOperation(api *API, name string, op *asyncapi.Operation, c
 	// Operation-level messages win over channel-level messages.
 	switch {
 	case len(op.Messages) > 0:
-		messages, err := p.parseMessages(op.Messages, ch.Name, ctx)
+		messages, err := p.parseMessagesList(op.Messages, ch.Name, ctx)
 		if err != nil {
 			return p.wrapField("messages", file, op.Common.Locator, err)
 		}
@@ -87,6 +95,28 @@ func (p *parser) parseOperation(api *API, name string, op *asyncapi.Operation, c
 	return nil
 }
 
+// resolveOperationRef follows an operations map entry that is a `{$ref}`.
+func (p *parser) resolveOperationRef(ref string, ctx *jsonpointer.ResolveCtx) (*asyncapi.Operation, error) {
+	key, err := ctx.Key(ref)
+	if err != nil {
+		return nil, errors.Wrapf(err, "resolve %q", ref)
+	}
+	if err := ctx.AddKey(key, p.file(ctx)); err != nil {
+		return nil, errors.Wrapf(err, "resolve %q", ref)
+	}
+	defer ctx.Delete(key)
+
+	node, err := jsonpointer.Resolve(key.Ptr, p.root)
+	if err != nil {
+		return nil, errors.Wrapf(err, "resolve %q", ref)
+	}
+	var out asyncapi.Operation
+	if err := node.Decode(&out); err != nil {
+		return nil, errors.Wrapf(err, "decode operation %q", ref)
+	}
+	return &out, nil
+}
+
 func (p *parser) parseReply(reply *asyncapi.OperationReply, ctx *jsonpointer.ResolveCtx) (*Reply, error) {
 	if reply.Channel == nil {
 		err := errors.New("reply channel is required")
@@ -105,7 +135,7 @@ func (p *parser) parseReply(reply *asyncapi.OperationReply, ctx *jsonpointer.Res
 	}
 	switch {
 	case len(reply.Messages) > 0:
-		r.Messages, err = p.parseMessages(reply.Messages, ch.Name, ctx)
+		r.Messages, err = p.parseMessagesList(reply.Messages, ch.Name, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -187,14 +217,20 @@ func (p *parser) parseChannel(name string, raw *asyncapi.Channel, ctx *jsonpoint
 		Common:      raw.Common,
 	}
 
-	// Resolve channel servers.
+	// Resolve channel servers; unresolvable entries are informational only,
+	// so they degrade to warnings (real documents reference servers moved to
+	// components by converters).
 	for _, s := range raw.Servers {
 		if s == nil {
 			continue
 		}
 		serverName, err := p.parseServerRef(s, ctx)
 		if err != nil {
-			return nil, p.wrapField("servers", file, raw.Common.Locator, err)
+			p.cfg.Logger.Warn("channel server reference is not resolvable; skipping",
+				zap.String("channel", name),
+				zap.String("ref", s.Ref),
+			)
+			continue
 		}
 		semantic.Servers = append(semantic.Servers, serverName)
 	}
@@ -228,7 +264,7 @@ func (p *parser) parseChannel(name string, raw *asyncapi.Channel, ctx *jsonpoint
 
 	// Parse channel-level messages (lazily; operations may override).
 	if len(raw.Messages) > 0 {
-		messages, err := p.parseMessages(raw.Messages, name, ctx)
+		messages, err := p.parseMessagesMap(raw.Messages, name, ctx)
 		if err != nil {
 			return nil, p.wrapField("messages", file, raw.Common.Locator, err)
 		}
@@ -322,8 +358,9 @@ func (p *parser) parameterFrom(name string, raw *asyncapi.Parameter) *Parameter 
 	}
 }
 
-// parseMessages parses a Messages map (name → message ref or inline).
-func (p *parser) parseMessages(messages asyncapi.Messages, channelName string, ctx *jsonpointer.ResolveCtx) ([]*Message, error) {
+// parseMessagesMap parses a channel Messages map (name → message ref or
+// inline).
+func (p *parser) parseMessagesMap(messages asyncapi.Messages, channelName string, ctx *jsonpointer.ResolveCtx) ([]*Message, error) {
 	var out []*Message
 	for _, name := range sortedKeys(messages) {
 		ref := messages[name]
@@ -341,6 +378,23 @@ func (p *parser) parseMessages(messages asyncapi.Messages, channelName string, c
 			if msg.Name == "" {
 				msg.Name = name
 			}
+		}
+		out = append(out, msg)
+	}
+	return out, nil
+}
+
+// parseMessagesList parses an operation Messages list (message refs or inline
+// messages).
+func (p *parser) parseMessagesList(messages []*asyncapi.MessageRef, channelName string, ctx *jsonpointer.ResolveCtx) ([]*Message, error) {
+	var out []*Message
+	for _, ref := range messages {
+		if ref == nil {
+			continue
+		}
+		msg, err := p.parseMessageRef(ref, ctx)
+		if err != nil {
+			return nil, err
 		}
 		out = append(out, msg)
 	}
@@ -380,7 +434,16 @@ func (p *parser) parseMessagePointer(ref string, loc location.Locator, ctx *json
 		return nil, p.wrapLocation(p.file(ctx), loc.Field("$ref"), errors.Wrapf(err, "decode message %q", ref))
 	}
 	if raw.Ref != "" {
-		return nil, p.wrapLocation(p.file(ctx), loc.Field("$ref"), errors.Errorf("message %q is a chained reference", ref))
+		// A channel message slot referenced from an operation messages list is
+		// itself a `{$ref}` to the component: follow the chain.
+		next := raw.Ref
+		for hop := 0; next != "" && hop < 2; hop++ {
+			inner, err := p.parseMessagePointer(next, loc, ctx)
+			if err != nil {
+				return nil, err
+			}
+			return inner, nil
+		}
 	}
 
 	semantic, err := p.parseMessage(ptrLastSegment(key.Ptr), &raw.Message, ctx)

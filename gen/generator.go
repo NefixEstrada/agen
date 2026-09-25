@@ -114,16 +114,18 @@ type Generator struct {
 	features Features
 	log      *zap.Logger
 
-	engine     *lowering.Engine
-	tstorage   lowering.TStorageView
-	operations []*ir.Operation
-	channels   []*ir.Channel
-	servers    []*ir.Server
-	info       APIInfo
-	imports    map[string]string
-	builtMsgs  map[*parser.Message]*ir.Message
-	sumTypes   map[string]*ir.Type
-	seenNames  map[string]struct{}
+	engine      *lowering.Engine
+	tstorage    lowering.TStorageView
+	operations  []*ir.Operation
+	channels    []*ir.Channel
+	servers     []*ir.Server
+	info        APIInfo
+	imports     map[string]string
+	builtMsgs   map[*parser.Message]*ir.Message
+	sumTypes    map[string]*ir.Type
+	seenNames   map[string]struct{}
+	refNames    map[string]string // schema ref ptr -> type name
+	refNameUsed map[string]struct{}
 }
 
 // NewGenerator parses the API model into IR.
@@ -156,10 +158,15 @@ func NewGenerator(api *parser.API, opt Options) (*Generator, error) {
 		Fail:        g.fail,
 		Logger:      opt.Logger,
 		Initialisms: opt.Initialisms,
+		NameRef:     g.nameSchemaRef,
 	})
 	g.builtMsgs = map[*parser.Message]*ir.Message{}
 	g.sumTypes = map[string]*ir.Type{}
 	g.seenNames = map[string]struct{}{}
+	g.refNames = map[string]string{}
+	g.refNameUsed = map[string]struct{}{}
+	g.refNames = map[string]string{}
+	g.refNameUsed = map[string]struct{}{}
 
 	if err := g.build(api); err != nil {
 		return nil, errors.Wrap(err, "build")
@@ -214,6 +221,7 @@ func containsPrefix(s []string, prefix string) bool {
 var knownProtocols = map[string]bool{
 	"redis":        true,
 	"kafka":        true,
+	"kafka-secure": true,
 	"mqtt":         true,
 	"mqtt5":        true,
 	"amqp":         true,
@@ -331,6 +339,7 @@ func (g *Generator) buildOperation(op *parser.Operation, seenChannels map[*parse
 	if err != nil {
 		return nil, errors.Wrap(err, "operation name")
 	}
+	g.reserveName(goName)
 
 	// Build or reuse the channel IR.
 	irCh, ok := seenChannels[op.Channel]
@@ -411,6 +420,7 @@ func (g *Generator) buildChannel(ch *parser.Channel) (*ir.Channel, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "channel name")
 	}
+	g.reserveName(goName)
 	irCh := &ir.Channel{
 		Name:        ch.Name,
 		GoName:      goName,
@@ -446,6 +456,9 @@ func (g *Generator) buildMessage(op *ir.Operation, msg *parser.Message) (*ir.Mes
 		return nil, errors.Wrap(err, "message name")
 	}
 
+	g.reserveName(name)
+	g.reserveName(name + "Payload")
+	g.reserveName(name + "Headers")
 	irMsg := &ir.Message{
 		Name:        name,
 		SpecName:    msg.SpecName,
@@ -529,6 +542,76 @@ func sortedServerKeys[V any](m map[string]V) []string {
 	}
 	sortStrings(keys)
 	return keys
+}
+
+// nameSchemaRef derives a schema type name from its reference, keeping names
+// unique across the document:
+//
+//   - #/components/schemas/<key> names by its key (the default rule);
+//   - deeper pointers (cross-channel references in converted documents) name
+//     by expanding tails of their path (payload -> message payload -> channel
+//     message payload) until unique.
+//
+// Dotted segments (converter-era message keys) are joined without the dots.
+func (g *Generator) nameSchemaRef(ref jsonschema.Ref) (string, error) {
+	ptr := strings.TrimPrefix(ref.Ptr, "#/")
+	if ref.Ptr != "" && ptr == ref.Ptr {
+		// External reference: let the default rule handle it.
+		return "", nil
+	}
+	if name, ok := g.refNames[ref.Ptr]; ok {
+		return name, nil
+	}
+	segments := strings.Split(ptr, "/")
+	for i, seg := range segments {
+		segments[i] = strings.ReplaceAll(strings.ReplaceAll(seg, "~1", "/"), "~0", "~")
+		segments[i] = strings.ReplaceAll(segments[i], ".", " ")
+		segments[i] = strings.TrimSpace(segments[i])
+	}
+	var candidates [][]string
+	if len(segments) >= 3 && segments[0] == "components" && segments[1] == "schemas" {
+		candidates = append(candidates, segments[2:])
+	} else {
+		for n := 2; n <= len(segments); n++ {
+			candidates = append(candidates, segments[len(segments)-n:])
+		}
+	}
+	for _, tail := range candidates {
+		if len(tail) == 0 {
+			continue
+		}
+		name, err := g.pascalName(tail...)
+		if err != nil {
+			return "", err
+		}
+		if name == "" {
+			continue
+		}
+		if _, used := g.refNameUsed[name]; used {
+			continue
+		}
+		g.refNameUsed[name] = struct{}{}
+		g.refNames[ref.Ptr] = name
+		return name, nil
+	}
+	// All candidates collide (should not happen): fall back to the default.
+	return "", nil
+}
+
+// reserveName marks a Go name as taken so ref-derived schema names avoid it.
+func (g *Generator) reserveName(name string) {
+	if name == "" {
+		return
+	}
+	g.refNameUsed[name] = struct{}{}
+}
+
+func (g *Generator) pascalName(parts ...string) (string, error) {
+	joined := strings.Join(parts, " ")
+	if g.opt.Initialisms {
+		return lowering.PascalSpecialInitialisms(joined)
+	}
+	return lowering.PascalSpecial(joined)
 }
 
 // goNameOf resolves a Go name from the x-agen-name (or x-ogen-name)

@@ -4,13 +4,16 @@ package asyncapi
 //
 // See https://www.asyncapi.com/docs/reference/specification/3.0.0#operationObject.
 type Operation struct {
+	// Ref references an operation in components, when set.
+	Ref string `json:"$ref,omitempty" yaml:"$ref,omitempty"`
 	// REQUIRED. The type of action: `send` or `receive`. From the application's
 	// perspective.
 	Action string `json:"action" yaml:"action"`
 	// The channel on which this operation is performed: `{$ref}` or inline.
 	Channel *ChannelRef `json:"channel,omitempty" yaml:"channel,omitempty"`
-	// A list of messages that will be sent to or received from this operation.
-	Messages Messages `json:"messages,omitempty" yaml:"messages,omitempty"`
+	// A list of messages that will be sent to or received from this
+	// operation: references or inline messages.
+	Messages []*MessageRef `json:"messages,omitempty" yaml:"messages,omitempty"`
 	// A human-friendly title for the operation.
 	Title string `json:"title,omitempty" yaml:"title,omitempty"`
 	// A short summary of the operation.
@@ -65,7 +68,7 @@ type OperationReply struct {
 	// REQUIRED. The channel on which the reply is sent: `{$ref}` or inline.
 	Channel *ChannelRef `json:"channel" yaml:"channel"`
 	// A list of messages that can be sent to the reply channel.
-	Messages Messages `json:"messages,omitempty" yaml:"messages,omitempty"`
+	Messages []*MessageRef `json:"messages,omitempty" yaml:"messages,omitempty"`
 	// A human-friendly title for the operation reply.
 	Title string `json:"title,omitempty" yaml:"title,omitempty"`
 	// A short summary of the operation reply.

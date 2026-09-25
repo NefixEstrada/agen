@@ -174,6 +174,28 @@ func validateInfo(info *asyncapi.Info) error {
 	return nil
 }
 
+// resolveServerRef follows a servers map entry that is a `{$ref}`.
+func (p *parser) resolveServerRef(ref string, ctx *jsonpointer.ResolveCtx) (*asyncapi.Server, error) {
+	key, err := ctx.Key(ref)
+	if err != nil {
+		return nil, errors.Wrapf(err, "resolve %q", ref)
+	}
+	if err := ctx.AddKey(key, p.file(ctx)); err != nil {
+		return nil, errors.Wrapf(err, "resolve %q", ref)
+	}
+	defer ctx.Delete(key)
+
+	node, err := jsonpointer.Resolve(key.Ptr, p.root)
+	if err != nil {
+		return nil, errors.Wrapf(err, "resolve %q", ref)
+	}
+	var out asyncapi.Server
+	if err := node.Decode(&out); err != nil {
+		return nil, errors.Wrapf(err, "decode server %q", ref)
+	}
+	return &out, nil
+}
+
 func defaultContentType(spec *asyncapi.Spec) string {
 	if spec.DefaultContentType != "" {
 		return spec.DefaultContentType
@@ -206,6 +228,13 @@ func (p *parser) parseServers(api *API, ctx *jsonpointer.ResolveCtx) error {
 	for name, s := range p.spec.Servers {
 		if s == nil {
 			continue
+		}
+		if s.Ref != "" {
+			resolved, err := p.resolveServerRef(s.Ref, ctx)
+			if err != nil {
+				return errors.Wrapf(err, "server %q", name)
+			}
+			s = resolved
 		}
 		if s.Host == "" {
 			err := errors.New("server.host is required")

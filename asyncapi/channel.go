@@ -1,6 +1,9 @@
 package asyncapi
 
-import "github.com/go-faster/yaml"
+import (
+	"github.com/go-faster/errors"
+	"github.com/go-faster/yaml"
+)
 
 // ChannelRef is either an inline Channel or a `$ref` to one (Multi Resource Object).
 type ChannelRef struct {
@@ -12,6 +15,33 @@ type ChannelRef struct {
 // ServerRef is a reference to a server.
 type ServerRef struct {
 	Ref string `json:"$ref,omitempty" yaml:"$ref,omitempty"`
+}
+
+// ParameterLocation is a runtime expression or a list of them.
+type ParameterLocation []string
+
+// UnmarshalYAML implements yaml.Unmarshaler, accepting a scalar or a list.
+func (l *ParameterLocation) UnmarshalYAML(n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		var single string
+		if err := n.Decode(&single); err != nil {
+			return err
+		}
+		if single != "" {
+			*l = []string{single}
+		}
+		return nil
+	case yaml.SequenceNode:
+		var list []string
+		if err := n.Decode(&list); err != nil {
+			return err
+		}
+		*l = list
+		return nil
+	default:
+		return errors.Errorf("location must be a string or a list")
+	}
 }
 
 // ParameterRef is either an inline Parameter or a `$ref` to one.
@@ -63,8 +93,9 @@ type Parameter struct {
 	Default string `json:"default,omitempty" yaml:"default,omitempty"`
 	// A verbose explanation of the parameter.
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
-	// A runtime expression or URI-template location the parameter value should be taken from.
-	Location []string `json:"location,omitempty" yaml:"location,omitempty"`
+	// A runtime expression or URI-template location the parameter value
+	// should be taken from: a string or a list of strings per the spec.
+	Location ParameterLocation `json:"location,omitempty" yaml:"location,omitempty"`
 	// An array of examples of the parameter value.
 	Examples []string `json:"examples,omitempty" yaml:"examples,omitempty"`
 
