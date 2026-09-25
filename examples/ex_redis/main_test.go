@@ -11,7 +11,7 @@ import (
 
 	redisruntime "github.com/NefixEstrada/agen/runtime/redis"
 
-	demo "github.com/NefixEstrada/agen/examples/redis/api"
+	demo "github.com/NefixEstrada/agen/examples/ex_redis/api"
 )
 
 // TestRedisDemoEndToEnd runs the demo flow (publish -> consume -> ack) against

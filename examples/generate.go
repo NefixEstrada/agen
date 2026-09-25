@@ -10,4 +10,4 @@ import _ "github.com/NefixEstrada/agen"
 
 // Runnable Redis demo (package redisdemo consumed by redis/main.go):
 //
-//go:generate go run github.com/NefixEstrada/agen/cmd/agen -v --clean --package-name redisdemo --target redis/api ../_testdata/examples/redis-demo.yaml
+//go:generate go run github.com/NefixEstrada/agen/cmd/agen -v --clean --package-name redisdemo --target ex_redis/api ../_testdata/examples/redis-demo.yaml

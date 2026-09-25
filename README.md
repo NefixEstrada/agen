@@ -111,7 +111,7 @@ make examples test_examples                    # regenerate + test (real public 
 
 `examples/` is a separate module with committed generated code for real public AsyncAPI documents (the
 canonical Streetlights Kafka spec plus official-converter outputs of 2.6 documents) and a runnable Redis
-demo (`go run ./examples/redis`); see [examples/README.md](examples/README.md).
+demo (`go run ./examples/ex_redis`); see [examples/README.md](examples/README.md).
 
 Generated files are named `aas_*_gen.go` (AsyncAPI spec, mirroring ogen's `oas_*` convention).
 

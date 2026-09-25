@@ -35,15 +35,15 @@ Documents that agen cannot generate yet are deliberately not included (e.g. conv
 
 ## Runnable Redis demo
 
-`redis/` is a self-contained runnable example of the Redis runtime (agen's own demo spec in
+`ex_redis/` is a self-contained runnable example of the Redis runtime (agen's own demo spec in
 `_testdata/examples/redis-demo.yaml`, not an upstream document): it publishes typed light commands and
 receives them back through a consumer group — publish → XADD → XREADGROUP → decode → validate → handler →
 XACK. Start a Redis server and:
 
 ```sh
-go run ./redis                # streams mode (default)
-go run ./redis -mode pubsub   # fire-and-forget Pub/Sub mode
-go run ./redis -n 5 -addr redis.example.io:6379
+go run ./ex_redis                # streams mode (default)
+go run ./ex_redis -mode pubsub   # fire-and-forget Pub/Sub mode
+go run ./ex_redis -n 5 -addr redis.example.io:6379
 ```
 
-`redis/main_test.go` runs the same flow against an in-memory Redis (miniredis).
+`ex_redis/main_test.go` runs the same flow against an in-memory Redis (miniredis).
